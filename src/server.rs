@@ -1,4 +1,4 @@
-use log::{info, warn};
+use log::warn;
 use std::io;
 use std::sync::Arc;
 use std::thread;
@@ -9,11 +9,11 @@ pub fn listen() {
     let thread_num = 4;
     let mut handles = Vec::new();
 
-    for i in 0..thread_num {
+    for _ in 0..thread_num {
         let server = server.clone();
         handles.push(thread::spawn(move || {
             for request in server.incoming_requests() {
-                handle(request, i);
+                handle(request);
             }
         }));
     }
@@ -23,9 +23,11 @@ pub fn listen() {
     }
 }
 
-fn handle(request: Request, n: usize) {
+fn handle(request: Request) {
     let response = match request.method() {
-        Method::Get => get(n),
+        Method::Get => get(),
+        Method::Post => put(),
+        Method::Delete => delete(),
         _ => return,
     };
     if let Err(err) = request.respond(response) {
@@ -33,6 +35,14 @@ fn handle(request: Request, n: usize) {
     }
 }
 
-fn get(n: usize) -> Response<io::Cursor<Vec<u8>>> {
-    tiny_http::Response::from_string(format!("hello from {}", n))
+fn get() -> Response<io::Cursor<Vec<u8>>> {
+    tiny_http::Response::from_string("Get")
+}
+
+fn put() -> Response<io::Cursor<Vec<u8>>> {
+    tiny_http::Response::from_string("Put")
+}
+
+fn delete() -> Response<io::Cursor<Vec<u8>>> {
+    tiny_http::Response::from_string("Delete")
 }
