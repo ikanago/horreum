@@ -1,4 +1,5 @@
 pub mod server;
+pub mod index;
 
 #[cfg(test)]
 mod tests {
