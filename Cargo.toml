@@ -9,3 +9,5 @@ edition = "2018"
 [dependencies]
 log = "0.4.11"
 tiny_http = "0.7"
+crossbeam = "0.7.3"
+qstring = "0.7"
