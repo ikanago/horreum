@@ -1,10 +1,9 @@
 use horreum::http;
 use horreum::index::Horreum;
-use std::thread;
 
 fn main() {
     let db = Horreum::new();
-    http::listen(&db);
+    http::listen(&db, 4);
     // let pairs = vec![
     //     ("hoge", "fuga"),
     //     ("neko", "cat"),

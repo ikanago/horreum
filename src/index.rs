@@ -39,3 +39,9 @@ impl Horreum {
         map.remove(key)
     }
 }
+
+impl Default for Horreum {
+    fn default() -> Self {
+        Horreum::new()
+    }
+}
