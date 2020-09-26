@@ -1,5 +1,5 @@
-use horreum::index::Horreum;
 use horreum::http;
+use horreum::index::Horreum;
 use std::thread;
 
 fn main() {

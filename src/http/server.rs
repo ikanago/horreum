@@ -1,5 +1,4 @@
 use crate::index::Horreum;
-use crossbeam;
 use log::warn;
 use qstring::QString;
 use std::io;
@@ -45,7 +44,7 @@ fn get(db: &Horreum, request: &Request) -> Response<io::Cursor<Vec<u8>>> {
         Some(value) => value,
         None => return tiny_http::Response::from_string(format!("No entry for {}", key)),
     };
-    tiny_http::Response::from_string(format!("{}", value))
+    tiny_http::Response::from_string(value)
 }
 
 fn put(db: &Horreum, request: &Request) -> Response<io::Cursor<Vec<u8>>> {
@@ -66,7 +65,7 @@ fn delete(db: &Horreum, request: &Request) -> Response<io::Cursor<Vec<u8>>> {
         Some(value) => value,
         None => return tiny_http::Response::from_string(format!("No entry for {}", key)),
     };
-    tiny_http::Response::from_string(format!("{}", deleted_value))
+    tiny_http::Response::from_string(deleted_value)
 }
 
 /// Get key from a request URI.
@@ -76,7 +75,6 @@ fn get_key(uri: &str) -> Option<String> {
         Some(query) => query,
         None => return None,
     };
-    let query = QString::from(query);
     query.get("key").map(|key| key.to_string())
 }
 
@@ -142,6 +140,9 @@ mod tests {
     #[test]
     fn test_get_key_value() {
         let uri = "/?key=abc&value=def";
-        assert_eq!(Some(("abc".to_string(), "def".to_string())), get_key_value(uri));
+        assert_eq!(
+            Some(("abc".to_string(), "def".to_string())),
+            get_key_value(uri)
+        );
     }
 }

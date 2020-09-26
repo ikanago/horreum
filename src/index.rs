@@ -1,10 +1,11 @@
-use std::sync::{Arc, Mutex};
 use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex};
 
 /// Database itselff holding index of data.
 ///
 /// This struct is accessed and mutated its inner data from multiple threads.
 /// Data inside of this database is not persisted to non-valatile memory now.
+#[derive(Debug)]
 pub struct Horreum {
     index: Arc<Mutex<BTreeMap<String, String>>>,
 }
@@ -13,7 +14,7 @@ impl Horreum {
     /// Constructs a new `Horreum`.
     pub fn new() -> Self {
         Self {
-            index: Arc::new(Mutex::new(BTreeMap::new()))
+            index: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
 
@@ -21,7 +22,7 @@ impl Horreum {
     pub fn get(&self, key: &str) -> Option<String> {
         let index = self.index.clone();
         let map = index.lock().unwrap();
-        map.get(key).map(|value| value.clone())
+        map.get(key).cloned()
     }
 
     /// Acquire a lock for index and insert a given key-value pair
