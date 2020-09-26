@@ -27,10 +27,10 @@ fn handle(request: Request, db: &Horreum) {
     let response = match request.method() {
         Method::Get => get(db, &request),
         Method::Post => put(db, &request),
-        // Method::Delete => delete(db, &request),
+        Method::Delete => delete(db, &request),
         _ => return,
     };
-    dbg!(&request.url());
+    dbg!(request.method(), request.url());
     if let Err(err) = request.respond(response) {
         warn!("{}", err);
     }
@@ -57,9 +57,17 @@ fn put(db: &Horreum, request: &Request) -> Response<io::Cursor<Vec<u8>>> {
     tiny_http::Response::from_string("Put")
 }
 
-// fn delete(db: &Horreum, request: &Request) -> Response<io::Cursor<Vec<u8>>> {
-//     tiny_http::Response::from_string("Delete")
-// }
+fn delete(db: &Horreum, request: &Request) -> Response<io::Cursor<Vec<u8>>> {
+    let key = match get_key(request.url()) {
+        Some(key) => key,
+        None => return tiny_http::Response::from_string("Specify key"),
+    };
+    let deleted_value = match db.delete(&key) {
+        Some(value) => value,
+        None => return tiny_http::Response::from_string(format!("No entry for {}", key)),
+    };
+    tiny_http::Response::from_string(format!("{}", deleted_value))
+}
 
 /// Get key from a request URI.
 /// It is used to delete or get data from an index.

@@ -30,4 +30,11 @@ impl Horreum {
         let mut map = index.lock().unwrap();
         map.insert(key, value);
     }
+
+    /// Acquire a lock for index and insert a given key-value pair
+    pub fn delete(&self, key: &str) -> Option<String> {
+        let index = self.index.clone();
+        let mut map = index.lock().unwrap();
+        map.remove(key)
+    }
 }
