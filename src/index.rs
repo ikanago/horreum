@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 /// This struct is accessed and mutated its inner data from multiple threads.
 /// Data inside of this database is not persisted to non-valatile memory now.
 pub struct Horreum {
-    index: Arc<Mutex<BTreeMap<Vec<u8>, Vec<u8>>>>,
+    index: Arc<Mutex<BTreeMap<String, String>>>,
 }
 
 impl Horreum {
@@ -18,14 +18,14 @@ impl Horreum {
     }
 
     /// Acquire a lock for index and get value corresponding the key.
-    pub fn get(&self, key: &Vec<u8>) -> Option<Vec<u8>> {
+    pub fn get(&self, key: &str) -> Option<String> {
         let index = self.index.clone();
         let map = index.lock().unwrap();
         map.get(key).map(|value| value.clone())
     }
 
     /// Acquire a lock for index and insert a given key-value pair
-    pub fn put(&self, key: Vec<u8>, value: Vec<u8>) {
+    pub fn put(&self, key: String, value: String) {
         let index = self.index.clone();
         let mut map = index.lock().unwrap();
         map.insert(key, value);
