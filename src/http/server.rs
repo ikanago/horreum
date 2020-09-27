@@ -5,9 +5,8 @@ use std::io;
 use std::sync::Arc;
 use tiny_http::{Method, Request, Response, Server};
 
-pub fn listen(db: &Horreum) {
+pub fn listen(db: &Horreum, thread_num: usize) {
     let server = Arc::new(Server::http("127.0.0.1:8080").unwrap());
-    let thread_num = 4;
 
     crossbeam::scope(|s| {
         for _ in 0..thread_num {
