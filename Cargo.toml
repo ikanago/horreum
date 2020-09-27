@@ -11,6 +11,9 @@ log = "0.4.11"
 tiny_http = "0.7"
 crossbeam = "0.7.3"
 qstring = "0.7"
+clap = "2.3.33"
+rayon = "1.4.0"
+reqwest = "0.10.8"
 
 [dev-dependencies]
 criterion = "0.3.3"

@@ -5,5 +5,5 @@ use criterion::criterion_main;
 
 criterion_main! {
     benchmarks::put_parallel::benches,
-    benchmarks::put_serial::benches
+    // benchmarks::put_serial::benches
 }

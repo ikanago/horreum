@@ -1,20 +1,25 @@
-use crate::setup::PAIRS;
-use criterion::{criterion_group, Criterion};
-use horreum::Horreum;
+// use crate::setup::{COUNT, PAIRS, launch_db};
+// use criterion::{criterion_group, BenchmarkId, Criterion};
+// use rayon::prelude::*;
+// use reqwest::Client;
+// use std::process::{Command, Stdio};
 
-fn put_pairs(db: &Horreum) {
-    for (key, value) in PAIRS.iter() {
-        db.put(key.clone(), value.clone());
-    }
-}
+// fn put_pairs(client: &Client) {
+//     PAIRS.par_iter().for_each(|(key, value)| {
+//         let url = format!("http://localhost:8080?key={}&value={}", key, value);
+//         client.post(&url).send();
+//     });
+// }
 
-pub fn bench_put(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Put key value pairs in serial");
-    group.bench_function("Put pairs", |b| {
-        let db = Horreum::new();
-        b.iter(|| put_pairs(&db));
-    });
-    group.finish();
-}
+// pub fn bench_put(c: &mut Criterion) {
+//     let mut group = c.benchmark_group("Put key value pairs in serial");
+//     let process = launch_db(n)
+//     let client = Client::new();
 
-criterion_group!(benches, bench_put);
+//     group.bench_function("put_pairs()", |b| {
+//         b.iter(|| put_pairs(&client));
+//     });
+//     group.finish();
+// }
+
+// criterion_group!(benches, bench_put);

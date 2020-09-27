@@ -1,30 +1,27 @@
-use crate::setup::{COUNT, PAIRS};
+use crate::setup::{launch_db, COUNT, PAIRS};
 use criterion::{criterion_group, BenchmarkId, Criterion};
-use horreum::Horreum;
-use lazy_static::lazy_static;
+use rayon::prelude::*;
+use reqwest::Client;
+use std::process::{Command, Stdio};
 
-lazy_static! {
-    static ref DB: Horreum = Horreum::new();
-}
-
-fn put_pairs(thread_num: usize) {
-    crossbeam::scope(|s| {
-        for pairs in PAIRS.chunks(COUNT / thread_num) {
-            s.spawn(move |_| {
-                for (key, value) in pairs {
-                    DB.put(key.clone(), value.clone());
-                }
-            });
-        }
-    })
-    .unwrap();
+fn put_pairs(client: &Client, port: usize) {
+    PAIRS.par_iter().for_each(|(key, value)| {
+        let url = format!("http://localhost:{}?key={}&value={}", port, key, value);
+        client.post(&url).send();
+    });
 }
 
 pub fn bench_put(c: &mut Criterion) {
     let mut group = c.benchmark_group("Put key value pairs in parallel");
-    let n = 10;
-    group.bench_with_input(BenchmarkId::new("put_pairs()", n), &n, |b, &n| {
-        b.iter(|| put_pairs(n));
+    let db_with_one_thread = launch_db(1, 8081);
+    let db_with_more_threads = launch_db(8, 8082);
+    let client = Client::new();
+
+    group.bench_function("put_pairs_to_one_thread()", |b| {
+        b.iter(|| put_pairs(&client, 8081));
+    });
+    group.bench_function("put_pairs_to_more_threads()", |b| {
+        b.iter(|| put_pairs(&client, 8082));
     });
     group.finish();
 }
