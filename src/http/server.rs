@@ -30,7 +30,7 @@ fn handle(request: Request, db: &Horreum) {
         Method::Delete => delete(db, &request),
         _ => return,
     };
-    dbg!(request.method(), request.url());
+    // dbg!(request.method(), request.url());
     if let Err(err) = request.respond(response) {
         warn!("{}", err);
     }
