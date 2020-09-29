@@ -11,7 +11,13 @@ log = "0.4.11"
 tiny_http = "0.7"
 crossbeam = "0.7.3"
 qstring = "0.7"
+clap = "2.3.33"
 
 [dev-dependencies]
 criterion = "0.3.3"
 lazy_static = "1.4.0"
+rand = "0.7.3"
+
+[[bench]]
+name = "bench_main"
+harness = false

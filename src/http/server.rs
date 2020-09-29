@@ -1,15 +1,17 @@
 use crate::index::Horreum;
-use log::warn;
+use log::{info, warn};
 use qstring::QString;
 use std::io;
 use std::sync::Arc;
 use tiny_http::{Method, Request, Response, Server};
 
-pub fn listen(db: &Horreum, thread_num: usize) {
-    let server = Arc::new(Server::http("127.0.0.1:8080").unwrap());
+pub fn listen(db: &Horreum, num_threads: usize, port: usize) {
+    let address = format!("127.0.0.1:{}", port);
+    info!("Database is launched at {}", address);
+    let server = Arc::new(Server::http(address).unwrap());
 
     crossbeam::scope(|s| {
-        for _ in 0..thread_num {
+        for _ in 0..num_threads {
             let server = server.clone();
             s.spawn(move |_| {
                 for request in server.incoming_requests() {
@@ -28,7 +30,7 @@ fn handle(request: Request, db: &Horreum) {
         Method::Delete => delete(db, &request),
         _ => return,
     };
-    dbg!(request.method(), request.url());
+    // dbg!(request.method(), request.url());
     if let Err(err) = request.respond(response) {
         warn!("{}", err);
     }
