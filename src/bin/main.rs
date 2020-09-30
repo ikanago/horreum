@@ -21,5 +21,5 @@ fn main() {
     }
 
     let db = Horreum::new();
-    http::listen(&db, num_threads, port);
+    // http::listen(&db, num_threads, port);
 }

@@ -8,10 +8,12 @@ edition = "2018"
 
 [dependencies]
 log = "0.4.11"
-tiny_http = "0.7"
-crossbeam = "0.7.3"
-qstring = "0.7"
 clap = "2.3.33"
+qstring = "0.7"
+tokio = "0.2.22"
+futures = "0.3.5"
+hyper = "0.13.8"
+thiserror = "1.0.20"
 
 [dev-dependencies]
 criterion = "0.3.3"
