@@ -1,6 +1,6 @@
 mod server;
 
-pub use server::Server;
+pub use server::serve;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -12,5 +12,5 @@ pub enum QueryError {
     #[error("Value not specified")]
     LacksValue,
     #[error("No entry for {0}")]
-    NoEntry(String)
+    NoEntry(String),
 }

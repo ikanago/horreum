@@ -1,16 +1,16 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-/// Database itselff holding index of data.
+/// Database itself holding index of data.
 ///
 /// This struct is accessed and mutated its inner data from multiple threads.
 /// Data inside of this database is not persisted to non-valatile memory now.
 #[derive(Debug)]
-pub struct Horreum {
+pub struct Index {
     index: Arc<Mutex<BTreeMap<String, String>>>,
 }
 
-impl Horreum {
+impl Index {
     /// Constructs a new `Horreum`.
     pub fn new() -> Self {
         Self {
@@ -40,8 +40,16 @@ impl Horreum {
     }
 }
 
-impl Default for Horreum {
+impl Clone for Index {
+    fn clone(&self) -> Self {
+        Self {
+            index: self.index.clone(),
+        }
+    }
+}
+
+impl Default for Index {
     fn default() -> Self {
-        Horreum::new()
+        Index::new()
     }
 }

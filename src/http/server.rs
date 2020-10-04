@@ -1,34 +1,36 @@
 use crate::http::QueryError;
-use crate::index::Horreum;
-use hyper::{service, Body, Method, Request, Response, StatusCode};
-use log::{info, warn};
-use qstring;
-use std::io;
+use crate::index::Index;
+use hyper::{service, Body, Method, Request, Response, Server, StatusCode};
+use log::warn;
+use std::convert::Infallible;
 use std::net;
-use std::sync::Arc;
 
-pub struct Server {
-    inner: hyper::Server<hyper::server::conn::AddrIncoming, ()>,
+pub async fn serve(index: &Index, port: u16) -> Result<(), hyper::Error> {
+    let addr = net::IpAddr::from([127, 0, 0, 1]);
+    let addr = net::SocketAddr::new(addr, port);
+    let service = service::make_service_fn(move |_| {
+        let index = index.clone();
+        async move {
+            Ok::<_, Infallible>(service::service_fn(move |req| {
+                let index = index.clone();
+                async move { handle(req, &index).await }
+            }))
+        }
+    });
+    let server = Server::bind(&addr).serve(service);
+
+    if let Err(e) = server.await {
+        warn!("{}", e);
+        return Err(e);
+    }
+    Ok(())
 }
 
-// impl Server {
-//     pub fn new(port: u16, db: &Horreum) -> hyper::Server<hyper::server::conn::AddrIncoming, ()> {
-//         let addr = net::IpAddr::from([127, 0, 0, 1]);
-//         let addr = net::SocketAddr::new(addr, port);
-//         hyper::Server::bind(&addr).serve(service::make_service_fn(move |_| async {
-//             let db = db.clone();
-//             Ok::<_, hyper::Error>(service::service_fn(move |req| async {
-//                 handle(req, db);
-//             }))
-//         }))
-//     }
-// }
-
-fn handle(request: Request<Body>, db: &Horreum) -> Result<Response<Body>, hyper::Error> {
+async fn handle(request: Request<Body>, index: &Index) -> Result<Response<Body>, hyper::Error> {
     let response_message = match (request.method(), request.uri().path()) {
-        (&Method::GET, "/") => get(request.uri().query(), db),
-        (&Method::POST, "/") => put(request.uri().query(), db),
-        (&Method::DELETE, "/") => delete(request.uri().query(), db),
+        (&Method::GET, "/") => get(request.uri().query(), index),
+        (&Method::POST, "/") => put(request.uri().query(), index),
+        (&Method::DELETE, "/") => delete(request.uri().query(), index),
         _ => {
             return Ok(Response::builder()
                 .status(StatusCode::NOT_FOUND)
@@ -41,31 +43,34 @@ fn handle(request: Request<Body>, db: &Horreum) -> Result<Response<Body>, hyper:
             .status(StatusCode::OK)
             .body(Body::from(message))
             .unwrap()),
-        Err(err) => Ok(Response::builder()
-            .status(StatusCode::BAD_REQUEST)
-            .body(Body::from(format!("{}", err)))
-            .unwrap()),
+        Err(err) => {
+            warn!("{}", err);
+            Ok(Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body(Body::from(format!("{}", err)))
+                .unwrap())
+        }
     }
 }
 
-fn get(query: Option<&str>, db: &Horreum) -> Result<String, QueryError> {
+fn get(query: Option<&str>, index: &Index) -> Result<String, QueryError> {
     let key = get_key(query)?;
-    let value = match db.get(&key) {
+    let value = match index.get(&key) {
         Some(value) => value,
         None => return Ok(format!("No entry for {}", key)),
     };
     Ok(value)
 }
 
-fn put(query: Option<&str>, db: &Horreum) -> Result<String, QueryError> {
+fn put(query: Option<&str>, index: &Index) -> Result<String, QueryError> {
     let (key, value) = get_key_value(query)?;
-    db.put(key, value);
+    index.put(key, value);
     Ok("Put".to_string())
 }
 
-fn delete(query: Option<&str>, db: &Horreum) -> Result<String, QueryError> {
+fn delete(query: Option<&str>, index: &Index) -> Result<String, QueryError> {
     let key = get_key(query)?;
-    let deleted_value = match db.delete(&key) {
+    let deleted_value = match index.delete(&key) {
         Some(value) => value,
         None => return Ok(format!("No entry for {}", key)),
     };
