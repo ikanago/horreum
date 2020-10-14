@@ -1,107 +1,106 @@
-use crate::index::Horreum;
-use log::{info, warn};
-use qstring::QString;
-use std::io;
-use std::sync::Arc;
-use tiny_http::{Method, Request, Response, Server};
+use crate::http::QueryError;
+use crate::index::Index;
+use hyper::{service, Body, Method, Request, Response, Server, StatusCode};
+use log::warn;
+use std::convert::Infallible;
+use std::net;
 
-pub fn listen(db: &Horreum, num_threads: usize, port: usize) {
-    let address = format!("127.0.0.1:{}", port);
-    info!("Database is launched at {}", address);
-    let server = Arc::new(Server::http(address).unwrap());
-
-    crossbeam::scope(|s| {
-        for _ in 0..num_threads {
-            let server = server.clone();
-            s.spawn(move |_| {
-                for request in server.incoming_requests() {
-                    handle(request, db);
-                }
-            });
+pub async fn serve(index: &Index, port: u16) -> Result<(), hyper::Error> {
+    let addr = net::IpAddr::from([127, 0, 0, 1]);
+    let addr = net::SocketAddr::new(addr, port);
+    let service = service::make_service_fn(move |_| {
+        let index = index.clone();
+        async move {
+            Ok::<_, Infallible>(service::service_fn(move |req| {
+                let index = index.clone();
+                async move { handle(req, &index).await }
+            }))
         }
-    })
-    .unwrap();
+    });
+    let server = Server::bind(&addr).serve(service);
+
+    if let Err(e) = server.await {
+        warn!("{}", e);
+        return Err(e);
+    }
+    Ok(())
 }
 
-fn handle(request: Request, db: &Horreum) {
-    let response = match request.method() {
-        Method::Get => get(db, &request),
-        Method::Post => put(db, &request),
-        Method::Delete => delete(db, &request),
-        _ => return,
+async fn handle(request: Request<Body>, index: &Index) -> Result<Response<Body>, hyper::Error> {
+    let response_message = match (request.method(), request.uri().path()) {
+        (&Method::GET, "/") => get(request.uri().query(), index),
+        (&Method::POST, "/") => put(request.uri().query(), index),
+        (&Method::DELETE, "/") => delete(request.uri().query(), index),
+        _ => {
+            return Ok(Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(Body::empty())
+                .unwrap())
+        }
     };
-    // dbg!(request.method(), request.url());
-    if let Err(err) = request.respond(response) {
-        warn!("{}", err);
+    match response_message {
+        Ok(message) => Ok(Response::builder()
+            .status(StatusCode::OK)
+            .body(Body::from(message))
+            .unwrap()),
+        Err(err) => {
+            warn!("{}", err);
+            Ok(Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body(Body::from(format!("{}", err)))
+                .unwrap())
+        }
     }
 }
 
-fn get(db: &Horreum, request: &Request) -> Response<io::Cursor<Vec<u8>>> {
-    let key = match get_key(request.url()) {
-        Some(key) => key,
-        None => return tiny_http::Response::from_string("Specify key"),
-    };
-    let value = match db.get(&key) {
+fn get(query: Option<&str>, index: &Index) -> Result<String, QueryError> {
+    let key = get_key(query)?;
+    let value = match index.get(&key) {
         Some(value) => value,
-        None => return tiny_http::Response::from_string(format!("No entry for {}", key)),
+        None => return Ok(format!("No entry for {}", key)),
     };
-    tiny_http::Response::from_string(value)
+    Ok(value)
 }
 
-fn put(db: &Horreum, request: &Request) -> Response<io::Cursor<Vec<u8>>> {
-    let (key, value) = match get_key_value(request.url()) {
-        Some((key, value)) => (key, value),
-        None => return tiny_http::Response::from_string("Specify key and value"),
-    };
-    db.put(key, value);
-    tiny_http::Response::from_string("Put")
+fn put(query: Option<&str>, index: &Index) -> Result<String, QueryError> {
+    let (key, value) = get_key_value(query)?;
+    index.put(key, value);
+    Ok("Put".to_string())
 }
 
-fn delete(db: &Horreum, request: &Request) -> Response<io::Cursor<Vec<u8>>> {
-    let key = match get_key(request.url()) {
-        Some(key) => key,
-        None => return tiny_http::Response::from_string("Specify key"),
-    };
-    let deleted_value = match db.delete(&key) {
+fn delete(query: Option<&str>, index: &Index) -> Result<String, QueryError> {
+    let key = get_key(query)?;
+    let deleted_value = match index.delete(&key) {
         Some(value) => value,
-        None => return tiny_http::Response::from_string(format!("No entry for {}", key)),
+        None => return Ok(format!("No entry for {}", key)),
     };
-    tiny_http::Response::from_string(deleted_value)
+    Ok(deleted_value)
 }
 
 /// Get key from a request URI.
 /// It is used to delete or get data from an index.
-fn get_key(uri: &str) -> Option<String> {
-    let query = match extract_query(uri) {
-        Some(query) => query,
-        None => return None,
-    };
-    query.get("key").map(|key| key.to_string())
+fn get_key(query: Option<&str>) -> Result<String, QueryError> {
+    let query = query.ok_or(QueryError::Empty)?;
+    let query = qstring::QString::from(query);
+    match query.get("key") {
+        Some(key) => Ok(key.to_string()),
+        None => Err(QueryError::LacksKey),
+    }
 }
 
 /// Get key and value from a request URI.
 /// They are used to put data into an index.
-fn get_key_value(uri: &str) -> Option<(String, String)> {
-    let query = match extract_query(uri) {
-        Some(query) => query,
-        None => return None,
-    };
-    let key = query.get("key").map(|key| key.to_string());
-    let value = query.get("value").map(|key| key.to_string());
+fn get_key_value(query: Option<&str>) -> Result<(String, String), QueryError> {
+    let query = query.ok_or(QueryError::Empty)?;
+    let query = qstring::QString::from(query);
+    let key = query.get("key");
+    let value = query.get("value");
     match (key, value) {
-        (Some(key), Some(value)) => Some((key, value)),
-        _ => None,
+        (Some(key), Some(value)) => Ok((key.to_string(), value.to_string())),
+        (None, Some(_)) => Err(QueryError::LacksKey),
+        (Some(_), None) => Err(QueryError::LacksValue),
+        _ => Err(QueryError::Empty),
     }
-}
-
-/// Extract query string from a request URI.
-fn extract_query(uri: &str) -> Option<QString> {
-    let query = uri.split('?').nth(1);
-    let query = match query {
-        Some(query) => query,
-        None => return None,
-    };
-    Some(QString::from(query))
 }
 
 #[cfg(test)]
@@ -109,41 +108,43 @@ mod tests {
     use crate::http::server::*;
 
     #[test]
+    #[should_panic]
     fn test_get_key_with_empty_query() {
-        let uri = "/";
-        assert_eq!(None, get_key(uri));
+        get_key(None).unwrap();
     }
 
     #[test]
     fn test_get_key() {
-        let uri = "/?key=abc";
-        assert_eq!(Some("abc".to_string()), get_key(uri));
+        let query = Some("key=abc");
+        assert_eq!("abc".to_string(), get_key(query).unwrap());
     }
 
     #[test]
+    #[should_panic]
     fn test_get_key_value_with_empty_query() {
-        let uri = "/";
-        assert_eq!(None, get_key_value(uri));
+        get_key_value(None).unwrap();
     }
 
     #[test]
+    #[should_panic]
     fn test_get_key_value_only_with_key() {
-        let uri = "/?key=abc";
-        assert_eq!(None, get_key_value(uri));
+        let query = Some("key=abc");
+        get_key_value(query).unwrap();
     }
 
     #[test]
+    #[should_panic]
     fn test_get_key_value_only_with_value() {
-        let uri = "/?value=def";
-        assert_eq!(None, get_key_value(uri));
+        let query = Some("value=def");
+        get_key_value(query).unwrap();
     }
 
     #[test]
     fn test_get_key_value() {
-        let uri = "/?key=abc&value=def";
+        let query = Some("key=abc&value=def");
         assert_eq!(
-            Some(("abc".to_string(), "def".to_string())),
-            get_key_value(uri)
+            ("abc".to_string(), "def".to_string()),
+            get_key_value(query).unwrap()
         );
     }
 }
