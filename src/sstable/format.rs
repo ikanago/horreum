@@ -1,15 +1,11 @@
-use bincode::serialize;
-use serde::Serialize;
+use bincode::{deserialize, serialize};
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug)]
-pub enum ValueType {
-    Deleted,
-    Value,
-}
-
-#[derive(Clone, Debug, Serialize)]
+/// Internal representation of a key-value pair.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct InternalPair<'a> {
     key: &'a [u8],
+    /// If this pair is deleted, `value` is `None`.
     value: Option<&'a [u8]>,
 }
 
@@ -21,26 +17,48 @@ impl<'a> InternalPair<'a> {
         }
     }
 
+    /// Serialize struct's members into `Vec<u8>`.
+    /// # Examples
+    ///
+    /// ```
+    /// use horreum::sstable::format::InternalPair;
+    ///
+    /// let data = ("abc", Some("defg"));
+    /// let pair = InternalPair::new(data);
+    /// assert_eq!(
+    ///     vec![
+    ///         3, 0, 0, 0, 0, 0, 0, 0, 97, 98, 99, 1, 4, 0, 0, 0, 0, 0, 0, 0, 100, 101, 102, 103,
+    ///     ],
+    ///     pair.serialize()
+    /// );
+    /// ```
     pub fn serialize(&self) -> Vec<u8> {
         serialize(self).unwrap()
+    }
+
+    /// Deserialize struct's members from `Vec<u8>`
+    /// # Examples
+    ///
+    /// ```
+    /// use horreum::sstable::format::InternalPair;
+    ///
+    /// let bytes = vec![
+    ///         3, 0, 0, 0, 0, 0, 0, 0, 97, 98, 99, 1, 4, 0, 0, 0, 0, 0, 0, 0, 100, 101, 102, 103,
+    ///     ];
+    /// let pair = InternalPair::deserialize(&bytes);
+    /// assert_eq!(
+    ///     pair,
+    ///     InternalPair::new(("abc", Some("defg")))
+    /// );
+    /// ```
+    pub fn deserialize(bytes: &'a [u8]) -> Self {
+        deserialize(bytes).unwrap()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn serialize_normal_pair() {
-        let data = ("abc", Some("defg"));
-        let pair = InternalPair::new(data);
-        assert_eq!(
-            vec![
-                3, 0, 0, 0, 0, 0, 0, 0, 97, 98, 99, 1, 4, 0, 0, 0, 0, 0, 0, 0, 100, 101, 102, 103,
-            ],
-            pair.serialize()
-        );
-    }
 
     #[test]
     fn serialize_lacking_value() {
@@ -64,5 +82,23 @@ mod tests {
             ],
             pair.serialize()
         );
+    }
+
+    #[test]
+    fn deserialize_lacking_value() {
+        let bytes = vec![3, 0, 0, 0, 0, 0, 0, 0, 97, 98, 99, 0];
+        let pair = InternalPair::deserialize(&bytes);
+        assert_eq!(InternalPair::new(("abc", None)), pair);
+    }
+
+    #[test]
+    fn deserialize_non_ascii() {
+        let bytes = vec![
+            13, 0, 0, 0, 0, 0, 0, 0, 230, 151, 165, 230, 156, 172, 232, 170, 158, 240, 159, 146,
+            150, 1, 16, 0, 0, 0, 0, 0, 0, 0, 209, 128, 208, 182, 208, 176, 208, 178, 209, 135, 208,
+            184, 208, 189, 208, 176,
+        ];
+        let pair = InternalPair::deserialize(&bytes);
+        assert_eq!(InternalPair::new(("日本語💖", Some("ржавчина"))), pair);
     }
 }
