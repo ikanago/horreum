@@ -1,4 +1,4 @@
-use bincode::{deserialize, serialize};
+use bincode::{deserialize, serialize, Error};
 use serde::{Deserialize, Serialize};
 
 /// Internal representation of a key-value pair.
@@ -43,16 +43,16 @@ impl<'a> InternalPair<'a> {
     /// use horreum::sstable::format::InternalPair;
     ///
     /// let bytes = vec![
-    ///         3, 0, 0, 0, 0, 0, 0, 0, 97, 98, 99, 1, 4, 0, 0, 0, 0, 0, 0, 0, 100, 101, 102, 103,
-    ///     ];
-    /// let pair = InternalPair::deserialize(&bytes);
+    ///     3, 0, 0, 0, 0, 0, 0, 0, 97, 98, 99, 1, 4, 0, 0, 0, 0, 0, 0, 0, 100, 101, 102, 103,
+    /// ];
+    /// let pair = InternalPair::deserialize(&bytes).unwrap();
     /// assert_eq!(
     ///     pair,
     ///     InternalPair::new(("abc", Some("defg")))
     /// );
     /// ```
-    pub fn deserialize(bytes: &'a [u8]) -> Self {
-        deserialize(bytes).unwrap()
+    pub fn deserialize(bytes: &'a [u8]) -> Result<Self, Error> {
+        deserialize(bytes)
     }
 }
 
@@ -87,7 +87,7 @@ mod tests {
     #[test]
     fn deserialize_lacking_value() {
         let bytes = vec![3, 0, 0, 0, 0, 0, 0, 0, 97, 98, 99, 0];
-        let pair = InternalPair::deserialize(&bytes);
+        let pair = InternalPair::deserialize(&bytes).unwrap();
         assert_eq!(InternalPair::new(("abc", None)), pair);
     }
 
@@ -98,7 +98,7 @@ mod tests {
             150, 1, 16, 0, 0, 0, 0, 0, 0, 0, 209, 128, 208, 182, 208, 176, 208, 178, 209, 135, 208,
             184, 208, 189, 208, 176,
         ];
-        let pair = InternalPair::deserialize(&bytes);
+        let pair = InternalPair::deserialize(&bytes).unwrap();
         assert_eq!(InternalPair::new(("日本語💖", Some("ржавчина"))), pair);
     }
 }
