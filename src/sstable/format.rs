@@ -2,7 +2,7 @@ use bincode::{deserialize, serialize, Error};
 use serde::{Deserialize, Serialize};
 
 /// Internal representation of a key-value pair.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, Ord, PartialOrd, Eq, PartialEq)]
 pub struct InternalPair<'a> {
     key: &'a [u8],
     /// If this pair is deleted, `value` is `None`.
@@ -62,8 +62,7 @@ mod tests {
 
     #[test]
     fn serialize_lacking_value() {
-        let data = ("abc", None);
-        let pair = InternalPair::new(data);
+        let pair = InternalPair::new(("abc", None));
         assert_eq!(
             vec![3, 0, 0, 0, 0, 0, 0, 0, 97, 98, 99, 0,],
             pair.serialize()
@@ -72,8 +71,7 @@ mod tests {
 
     #[test]
     fn serialize_non_ascii() {
-        let data = ("日本語💖", Some("ржавчина"));
-        let pair = InternalPair::new(data);
+        let pair = InternalPair::new(("日本語💖", Some("ржавчина")));
         assert_eq!(
             vec![
                 13, 0, 0, 0, 0, 0, 0, 0, 230, 151, 165, 230, 156, 172, 232, 170, 158, 240, 159,
@@ -100,5 +98,12 @@ mod tests {
         ];
         let pair = InternalPair::deserialize(&bytes).unwrap();
         assert_eq!(InternalPair::new(("日本語💖", Some("ржавчина"))), pair);
+    }
+
+    #[test]
+    fn ordering() {
+        let pair1 = InternalPair::new(("abc", Some("defg")));
+        let pair2 = InternalPair::new(("日本語💖", Some("ржавчина")));
+        assert!(pair1 < pair2);
     }
 }
