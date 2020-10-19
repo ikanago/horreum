@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 /// Internal representation of a key-value pair.
 #[derive(Clone, Debug, Deserialize, Serialize, Ord, PartialOrd, Eq, PartialEq)]
 pub struct InternalPair<'a> {
-    key: &'a [u8],
+    pub(crate) key: &'a [u8],
     /// If this pair is deleted, `value` is `None`.
     value: Option<&'a [u8]>,
 }
