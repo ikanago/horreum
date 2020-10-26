@@ -22,13 +22,14 @@ impl<'a> IndexEntries<'a> {
     /// Get a position of a key(`pair.key`) in a SSTable file.
     /// If the key does not exist in the index, return minimum position at which it should be.
     /// If the key is smaller than `self.items[0]` in dictionary order, return `None` because the key does not exist in the SSTable.
+    #[allow(dead_code)]
     fn get(&self, pair: &InternalPair) -> Option<u64> {
         let key = pair.key;
         self.items
             .binary_search_by_key(&key, |&(key, _)| key)
             .or_else(|pos| if pos > 0 { Ok(pos - 1) } else { Err(()) })
             .ok()
-            .and_then(|pos| Some(self.items[pos].1))
+            .map(|pos| self.items[pos].1)
     }
 }
 
@@ -57,7 +58,7 @@ impl<'a> Table<'a> {
             index.push(pair_chunk[0].key, read_bytes);
             for pair in pair_chunk {
                 let bytes = pair.serialize();
-                file.write(&bytes)?;
+                file.write_all(&bytes)?;
                 read_bytes += bytes.len() as u64;
             }
         }
