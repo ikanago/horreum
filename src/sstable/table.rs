@@ -1,5 +1,4 @@
 use crate::sstable::format::InternalPair;
-use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{self, Write};
 use std::path::Path;
@@ -18,6 +17,18 @@ impl<'a> IndexEntries<'a> {
 
     fn push(&mut self, key: &'a [u8], position: u64) {
         self.items.push((key, position));
+    }
+
+    /// Get a position of a key(`pair.key`) in a SSTable file.
+    /// If the key does not exist in the index, return minimum position at which it should be.
+    /// If the key is smaller than `self.items[0]` in dictionary order, return `None` because the key does not exist in the SSTable.
+    fn get(&self, pair: &InternalPair) -> Option<u64> {
+        let key = pair.key;
+        self.items
+            .binary_search_by_key(&key, |&(key, _)| key)
+            .or_else(|pos| if pos > 0 { Ok(pos - 1) } else { Err(()) })
+            .ok()
+            .and_then(|pos| Some(self.items[pos].1))
     }
 }
 
@@ -119,5 +130,41 @@ mod tests {
             ],
             table.index.items
         );
+    }
+
+    #[test]
+    fn index_get() {
+        let path = "index_get";
+        let pairs = vec![
+            InternalPair::new(("abc00", Some("def"))),
+            InternalPair::new(("abc01", Some("defg"))),
+            InternalPair::new(("abc02", Some("de"))),
+            InternalPair::new(("abc03", Some("defgh"))),
+            InternalPair::new(("abc04", Some("defg"))),
+            InternalPair::new(("abc05", Some("defghij"))),
+            InternalPair::new(("abc06", Some("def"))),
+            InternalPair::new(("abc07", Some("defgh"))),
+            InternalPair::new(("abc08", None)),
+            InternalPair::new(("abc09", None)),
+            InternalPair::new(("abc10", None)),
+            InternalPair::new(("abc11", None)),
+            InternalPair::new(("abc12", None)),
+            InternalPair::new(("abc13", None)),
+            InternalPair::new(("abc14", None)),
+            InternalPair::new(("abc15", None)),
+        ];
+        let table = Table::new(path, pairs, 3).unwrap();
+        cleanup_file(path);
+        let index = table.index;
+        assert_eq!(index.get(&InternalPair::new(("a", Some("defg")))), None);
+        assert_eq!(
+            index.get(&InternalPair::new(("abc01", Some("defg")))),
+            Some(0)
+        );
+        assert_eq!(
+            index.get(&InternalPair::new(("abc03", Some("defgh")))),
+            Some(75)
+        );
+        assert_eq!(index.get(&InternalPair::new(("abc15", None))), Some(307));
     }
 }
