@@ -4,17 +4,35 @@ use std::fs::File;
 use std::io::{self, Write};
 use std::path::Path;
 
+/// Entries in SSTable's index.
+/// This sturct holds bytes of a key and position of a disk which the key is stored.
+#[derive(Debug)]
+struct IndexEntries<'a> {
+    items: Vec<(&'a [u8], u64)>,
+}
+
+impl<'a> IndexEntries<'a> {
+    fn new() -> Self {
+        Self { items: Vec::new() }
+    }
+
+    fn push(&mut self, key: &'a [u8], position: u64) {
+        self.items.push((key, position));
+    }
+}
+
 /// Represents a SSTable.
 #[derive(Debug)]
 pub struct Table<'a> {
     // File to write data.
     file: File,
     // Stores pairs of key and position to start read the key from the file.
-    index: BTreeMap<&'a [u8], u64>,
+    index: IndexEntries<'a>,
 }
 
 impl<'a> Table<'a> {
     /// Create a new instance of `Table`.
+    /// Assume `pairs` is sorted.
     /// Insert into an index every `index_stride` pair.
     pub fn new<P: AsRef<Path>>(
         path: P,
@@ -22,10 +40,10 @@ impl<'a> Table<'a> {
         index_stride: usize,
     ) -> io::Result<Self> {
         let mut file = File::create(path)?;
-        let mut index: BTreeMap<&'a [u8], u64> = BTreeMap::new();
+        let mut index = IndexEntries::new();
         let mut read_bytes = 0;
         for pair_chunk in pairs.chunks(index_stride) {
-            index.insert(pair_chunk[0].key, read_bytes);
+            index.push(pair_chunk[0].key, read_bytes);
             for pair in pair_chunk {
                 let bytes = pair.serialize();
                 file.write(&bytes)?;
@@ -90,22 +108,16 @@ mod tests {
         ];
         let table = Table::new(path, pairs, 3).unwrap();
         cleanup_file(path);
-        let expected = {
-            let mut tree: BTreeMap<&[u8], u64> = BTreeMap::new();
+        assert_eq!(
             vec![
-                (&[97, 98, 99, 48, 48], 0),
+                ([97, 98, 99, 48, 48].as_ref(), 0),
                 (&[97, 98, 99, 48, 51], 75),
                 (&[97, 98, 99, 48, 54], 157),
                 (&[97, 98, 99, 48, 57], 223),
                 (&[97, 98, 99, 49, 50], 265),
                 (&[97, 98, 99, 49, 53], 307),
-            ]
-            .into_iter()
-            .for_each(|(key, value)| {
-                tree.insert(key, value);
-            });
-            tree
-        };
-        assert_eq!(expected, table.index);
+            ],
+            table.index.items
+        );
     }
 }
