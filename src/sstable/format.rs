@@ -68,19 +68,24 @@ impl InternalPair {
                 i += 1;
                 pairs.push(InternalPair { key, value: None });
                 continue;
-            } else if bytes[i] == 1 {
-                i += 1;
-                let value_length: usize = deserialize(&bytes[i..i + 8])?;
-                i += 8;
-                let value = bytes[i..i + value_length].to_vec();
-                i += value_length;
-                pairs.push(InternalPair {
-                    key,
-                    value: Some(value),
-                });
             }
+            i += 1;
+            let value_length: usize = deserialize(&bytes[i..i + 8])?;
+            i += 8;
+            let value = bytes[i..i + value_length].to_vec();
+            i += value_length;
+            pairs.push(InternalPair {
+                key,
+                value: Some(value),
+            });
         }
         Ok(pairs)
+    }
+}
+
+impl Default for InternalPair {
+    fn default() -> Self {
+        Self::new(("", None))
     }
 }
 
