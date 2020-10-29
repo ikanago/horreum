@@ -105,7 +105,7 @@ impl Table {
         self.file.read(&mut buffer)?;
 
         // Handle this Result
-        let pairs = InternalPair::deserialize_from_bytes(buffer).unwrap();
+        let pairs = InternalPair::deserialize_from_bytes(&buffer).unwrap();
         let pair = pairs.into_iter().find(|pair| pair.key == key);
         Ok(pair)
     }
@@ -132,9 +132,9 @@ mod tests {
     fn table_creation() {
         let path = "test";
         let pairs = vec![
-            InternalPair::new(("abc", Some("defg"))),
-            InternalPair::new(("abc", None)),
-            InternalPair::new(("日本語💖", Some("ржавчина"))),
+            InternalPair::new("abc", Some("defg")),
+            InternalPair::new("abc", None),
+            InternalPair::new("日本語💖", Some("ржавчина")),
         ];
         let expected: Vec<u8> = pairs.iter().flat_map(|pair| pair.serialize()).collect();
         let _ = Table::new(path, pairs, 1).unwrap();
@@ -146,30 +146,30 @@ mod tests {
     fn search_table() {
         let path = "search_table";
         let pairs = vec![
-            InternalPair::new(("abc00", Some("def"))),
-            InternalPair::new(("abc01", Some("defg"))),
-            InternalPair::new(("abc02", Some("de"))),
-            InternalPair::new(("abc03", Some("defgh"))),
-            InternalPair::new(("abc04", Some("defg"))),
-            InternalPair::new(("abc05", Some("defghij"))),
-            InternalPair::new(("abc06", Some("def"))),
-            InternalPair::new(("abc07", Some("defgh"))),
-            InternalPair::new(("abc08", None)),
-            InternalPair::new(("abc09", None)),
-            InternalPair::new(("abc10", None)),
-            InternalPair::new(("abc11", None)),
-            InternalPair::new(("abc12", None)),
-            InternalPair::new(("abc13", None)),
-            InternalPair::new(("abc14", None)),
-            InternalPair::new(("abc15", None)),
+            InternalPair::new("abc00", Some("def")),
+            InternalPair::new("abc01", Some("defg")),
+            InternalPair::new("abc02", Some("de")),
+            InternalPair::new("abc03", Some("defgh")),
+            InternalPair::new("abc04", Some("defg")),
+            InternalPair::new("abc05", Some("defghij")),
+            InternalPair::new("abc06", Some("def")),
+            InternalPair::new("abc07", Some("defgh")),
+            InternalPair::new("abc08", None),
+            InternalPair::new("abc09", None),
+            InternalPair::new("abc10", None),
+            InternalPair::new("abc11", None),
+            InternalPair::new("abc12", None),
+            InternalPair::new("abc13", None),
+            InternalPair::new("abc14", None),
+            InternalPair::new("abc15", None),
         ];
         let mut table = Table::new(path, pairs, 3).unwrap();
         assert_eq!(
-            InternalPair::new(("abc04", Some("defg"))),
+            InternalPair::new("abc04", Some("defg")),
             table.get("abc04".as_bytes()).unwrap().unwrap()
         );
         assert_eq!(
-            InternalPair::new(("abc15", None)),
+            InternalPair::new("abc15", None),
             table.get("abc15".as_bytes()).unwrap().unwrap()
         );
         assert_eq!(None, table.get("abc011".as_bytes()).unwrap());
@@ -181,22 +181,22 @@ mod tests {
     fn index_creation() {
         let path = "index_test";
         let pairs = vec![
-            InternalPair::new(("abc00", Some("def"))),
-            InternalPair::new(("abc01", Some("defg"))),
-            InternalPair::new(("abc02", Some("de"))),
-            InternalPair::new(("abc03", Some("defgh"))),
-            InternalPair::new(("abc04", Some("defg"))),
-            InternalPair::new(("abc05", Some("defghij"))),
-            InternalPair::new(("abc06", Some("def"))),
-            InternalPair::new(("abc07", Some("defgh"))),
-            InternalPair::new(("abc08", None)),
-            InternalPair::new(("abc09", None)),
-            InternalPair::new(("abc10", None)),
-            InternalPair::new(("abc11", None)),
-            InternalPair::new(("abc12", None)),
-            InternalPair::new(("abc13", None)),
-            InternalPair::new(("abc14", None)),
-            InternalPair::new(("abc15", None)),
+            InternalPair::new("abc00", Some("def")),
+            InternalPair::new("abc01", Some("defg")),
+            InternalPair::new("abc02", Some("de")),
+            InternalPair::new("abc03", Some("defgh")),
+            InternalPair::new("abc04", Some("defg")),
+            InternalPair::new("abc05", Some("defghij")),
+            InternalPair::new("abc06", Some("def")),
+            InternalPair::new("abc07", Some("defgh")),
+            InternalPair::new("abc08", None),
+            InternalPair::new("abc09", None),
+            InternalPair::new("abc10", None),
+            InternalPair::new("abc11", None),
+            InternalPair::new("abc12", None),
+            InternalPair::new("abc13", None),
+            InternalPair::new("abc14", None),
+            InternalPair::new("abc15", None),
         ];
         let table = Table::new(path, pairs, 3).unwrap();
         cleanup_file(path);
@@ -217,22 +217,22 @@ mod tests {
     fn index_get() {
         let path = "index_get";
         let pairs = vec![
-            InternalPair::new(("abc00", Some("def"))),
-            InternalPair::new(("abc01", Some("defg"))),
-            InternalPair::new(("abc02", Some("de"))),
-            InternalPair::new(("abc03", Some("defgh"))),
-            InternalPair::new(("abc04", Some("defg"))),
-            InternalPair::new(("abc05", Some("defghij"))),
-            InternalPair::new(("abc06", Some("def"))),
-            InternalPair::new(("abc07", Some("defgh"))),
-            InternalPair::new(("abc08", None)),
-            InternalPair::new(("abc09", None)),
-            InternalPair::new(("abc10", None)),
-            InternalPair::new(("abc11", None)),
-            InternalPair::new(("abc12", None)),
-            InternalPair::new(("abc13", None)),
-            InternalPair::new(("abc14", None)),
-            InternalPair::new(("abc15", None)),
+            InternalPair::new("abc00", Some("def")),
+            InternalPair::new("abc01", Some("defg")),
+            InternalPair::new("abc02", Some("de")),
+            InternalPair::new("abc03", Some("defgh")),
+            InternalPair::new("abc04", Some("defg")),
+            InternalPair::new("abc05", Some("defghij")),
+            InternalPair::new("abc06", Some("def")),
+            InternalPair::new("abc07", Some("defgh")),
+            InternalPair::new("abc08", None),
+            InternalPair::new("abc09", None),
+            InternalPair::new("abc10", None),
+            InternalPair::new("abc11", None),
+            InternalPair::new("abc12", None),
+            InternalPair::new("abc13", None),
+            InternalPair::new("abc14", None),
+            InternalPair::new("abc15", None),
         ];
         let table = Table::new(path, pairs, 3).unwrap();
         cleanup_file(path);

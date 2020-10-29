@@ -10,21 +10,28 @@ pub struct InternalPair {
 }
 
 impl InternalPair {
-    pub fn new(pair: (&str, Option<&str>)) -> Self {
-        Self {
-            key: pair.0.as_bytes().to_vec(),
-            value: pair.1.map(|v| v.as_bytes().to_vec()),
-        }
-    }
-
-    /// Serialize struct's members into `Vec<u8>`.
-    /// # Examples
+    /// Initialize `InternalPair`.
+    /// # Example
     ///
     /// ```
     /// use horreum::sstable::format::InternalPair;
     ///
-    /// let data = ("abc", Some("defg"));
-    /// let pair = InternalPair::new(data);
+    /// let pair = InternalPair::new("abc", Some("def"));
+    /// ```
+    pub fn new(key: &str, value: Option<&str>) -> Self {
+        Self {
+            key: key.as_bytes().to_vec(),
+            value: value.map(|v| v.as_bytes().to_vec()),
+        }
+    }
+
+    /// Serialize struct's members into `Vec<u8>`.
+    /// # Example
+    ///
+    /// ```
+    /// use horreum::sstable::format::InternalPair;
+    ///
+    /// let pair = InternalPair::new("abc", Some("defg"));
     /// assert_eq!(
     ///     vec![
     ///         3, 0, 0, 0, 0, 0, 0, 0, 97, 98, 99, 1, 4, 0, 0, 0, 0, 0, 0, 0, 100, 101, 102, 103,
@@ -36,8 +43,8 @@ impl InternalPair {
         serialize(self).unwrap()
     }
 
-    /// Deserialize struct's members from `Vec<u8>`
-    /// # Examples
+    /// Deserialize `Vec<u8>` into struct's members.
+    /// # Example
     ///
     /// ```
     /// use horreum::sstable::format::InternalPair;
@@ -48,14 +55,28 @@ impl InternalPair {
     /// let pair = InternalPair::deserialize(&bytes).unwrap();
     /// assert_eq!(
     ///     pair,
-    ///     InternalPair::new(("abc", Some("defg")))
+    ///     InternalPair::new("abc", Some("defg"))
     /// );
     /// ```
-    pub fn deserialize(bytes: Vec<u8>) -> Result<Self, Error> {
-        deserialize(&bytes)
+    pub fn deserialize(bytes: &Vec<u8>) -> Result<Self, Error> {
+        deserialize(bytes)
     }
 
-    pub fn deserialize_from_bytes(bytes: Vec<u8>) -> Result<Vec<Self>, Error> {
+    /// Deserialize bytes of pairs.
+    /// # Example
+    ///
+    /// ```
+    /// use horreum::sstable::format::InternalPair;
+    /// let pairs = vec![
+    ///     InternalPair::new("abc00", Some("def")),
+    ///     InternalPair::new("abc01", Some("defg")),
+    ///     InternalPair::new("abc02", Some("de")),
+    ///     InternalPair::new("abc03", Some("defgh")),
+    /// ];
+    /// let bytes: Vec<u8> = pairs.iter().flat_map(|pair| pair.serialize()).collect();
+    /// assert_eq!(pairs, InternalPair::deserialize_from_bytes(&bytes).unwrap());
+    /// ```
+    pub fn deserialize_from_bytes(bytes: &Vec<u8>) -> Result<Vec<Self>, Error> {
         let mut pairs = vec![];
         let mut i = 0;
         while i < bytes.len() {
@@ -85,7 +106,7 @@ impl InternalPair {
 
 impl Default for InternalPair {
     fn default() -> Self {
-        Self::new(("", None))
+        Self::new("", None)
     }
 }
 
@@ -95,7 +116,7 @@ mod tests {
 
     #[test]
     fn serialize_lacking_value() {
-        let pair = InternalPair::new(("abc", None));
+        let pair = InternalPair::new("abc", None);
         assert_eq!(
             vec![3, 0, 0, 0, 0, 0, 0, 0, 97, 98, 99, 0,],
             pair.serialize()
@@ -104,7 +125,7 @@ mod tests {
 
     #[test]
     fn serialize_non_ascii() {
-        let pair = InternalPair::new(("日本語💖", Some("ржавчина")));
+        let pair = InternalPair::new("日本語💖", Some("ржавчина"));
         assert_eq!(
             vec![
                 13, 0, 0, 0, 0, 0, 0, 0, 230, 151, 165, 230, 156, 172, 232, 170, 158, 240, 159,
@@ -118,8 +139,8 @@ mod tests {
     #[test]
     fn deserialize_lacking_value() {
         let bytes = vec![3, 0, 0, 0, 0, 0, 0, 0, 97, 98, 99, 0];
-        let pair = InternalPair::deserialize(bytes).unwrap();
-        assert_eq!(InternalPair::new(("abc", None)), pair);
+        let pair = InternalPair::deserialize(&bytes).unwrap();
+        assert_eq!(InternalPair::new("abc", None), pair);
     }
 
     #[test]
@@ -129,26 +150,27 @@ mod tests {
             150, 1, 16, 0, 0, 0, 0, 0, 0, 0, 209, 128, 208, 182, 208, 176, 208, 178, 209, 135, 208,
             184, 208, 189, 208, 176,
         ];
-        let pair = InternalPair::deserialize(bytes).unwrap();
-        assert_eq!(InternalPair::new(("日本語💖", Some("ржавчина"))), pair);
+        let pair = InternalPair::deserialize(&bytes).unwrap();
+        assert_eq!(InternalPair::new("日本語💖", Some("ржавчина")), pair);
     }
 
     #[test]
     fn ordering() {
-        let pair1 = InternalPair::new(("abc", Some("defg")));
-        let pair2 = InternalPair::new(("日本語💖", Some("ржавчина")));
-        assert!(pair1 < pair2);
+        assert!(
+            InternalPair::new("abc", Some("defg"))
+                < InternalPair::new("日本語💖", Some("ржавчина"))
+        );
     }
 
     #[test]
     fn deserialize_from_bytes() {
         let pairs = vec![
-            InternalPair::new(("abc00", Some("def"))),
-            InternalPair::new(("abc01", Some("defg"))),
-            InternalPair::new(("abc02", Some("de"))),
-            InternalPair::new(("abc03", Some("defgh"))),
+            InternalPair::new("abc00", Some("def")),
+            InternalPair::new("abc01", Some("defg")),
+            InternalPair::new("abc02", Some("de")),
+            InternalPair::new("abc03", Some("defgh")),
         ];
         let bytes: Vec<u8> = pairs.iter().flat_map(|pair| pair.serialize()).collect();
-        assert_eq!(pairs, InternalPair::deserialize_from_bytes(bytes).unwrap());
+        assert_eq!(pairs, InternalPair::deserialize_from_bytes(&bytes).unwrap());
     }
 }
