@@ -3,32 +3,55 @@ use std::fs::File;
 use std::io::{self, Write};
 use std::path::Path;
 
-/// Entries in SSTable's index.
-/// This sturct holds bytes of a key and position of a disk which the key is stored.
-#[derive(Debug)]
-struct IndexEntries<'a> {
-    items: Vec<(&'a [u8], u64)>,
+/// Block is a group of keys.
+/// This has a first key, position at a disk and length of the keys.
+#[derive(Debug, Eq, PartialEq)]
+struct Block<'a> {
+    key: &'a [u8],
+    position: usize,
+    length: usize,
 }
 
-impl<'a> IndexEntries<'a> {
+impl<'a> Block<'a> {
+    fn new(key: &'a [u8], position: usize, length: usize) -> Self {
+        Self {
+            key,
+            position,
+            length,
+        }
+    }
+
+    fn set_length(&mut self, length: usize) {
+        self.length = length;
+    }
+}
+
+/// Entries in SSTable's index.
+/// This sturct holds bytes of a key, position of a disk which the key is stored and length of the keys.
+#[derive(Debug)]
+struct Index<'a> {
+    items: Vec<Block<'a>>,
+}
+
+impl<'a> Index<'a> {
     fn new() -> Self {
         Self { items: Vec::new() }
     }
 
-    fn push(&mut self, key: &'a [u8], position: u64) {
-        self.items.push((key, position));
+    fn push(&mut self, block: Block<'a>) {
+        self.items.push(block);
     }
 
     /// Get a position of a key(`pair.key`) in a SSTable file.
     /// If the key does not exist in the index, return minimum position at which it should be.
     /// If the key is smaller than `self.items[0]` in dictionary order, return `None` because the key does not exist in the SSTable.
     #[allow(dead_code)]
-    fn get(&self, key: &[u8]) -> Option<u64> {
+    fn get(&self, key: &[u8]) -> Option<(usize, usize)> {
         self.items
-            .binary_search_by_key(&key, |&(key, _)| key)
+            .binary_search_by_key(&key, move |entry| entry.key)
             .or_else(|pos| if pos > 0 { Ok(pos - 1) } else { Err(()) })
             .ok()
-            .map(|pos| self.items[pos].1)
+            .map(|pos| (self.items[pos].position, self.items[pos].length))
     }
 }
 
@@ -38,29 +61,32 @@ pub struct Table<'a> {
     // File to write data.
     file: File,
     // Stores pairs of key and position to start read the key from the file.
-    index: IndexEntries<'a>,
+    index: Index<'a>,
 }
 
 impl<'a> Table<'a> {
     /// Create a new instance of `Table`.
     /// Assume `pairs` is sorted.
-    /// Insert into an index every `index_stride` pair.
+    /// Insert into an index every `block_stride` pair.
     pub fn new<P: AsRef<Path>>(
         path: P,
         pairs: Vec<InternalPair<'a>>,
-        index_stride: usize,
+        block_stride: usize,
     ) -> io::Result<Self> {
         let mut file = File::create(path)?;
-        let mut index = IndexEntries::new();
-        let mut read_bytes = 0;
-        for pair_chunk in pairs.chunks(index_stride) {
-            index.push(pair_chunk[0].key, read_bytes);
-            for pair in pair_chunk {
-                let bytes = pair.serialize();
-                file.write_all(&bytes)?;
-                read_bytes += bytes.len() as u64;
-            }
+        let mut index = Index::new();
+        let mut read_data = Vec::new();
+        for pair_chunk in pairs.chunks(block_stride) {
+            let mut block = Block::new(pair_chunk[0].key, read_data.len(), 0);
+            let mut block_data: Vec<u8> = pair_chunk
+                .iter()
+                .flat_map(|pair| pair.serialize())
+                .collect();
+            block.set_length(block_data.len());
+            index.push(block);
+            read_data.append(&mut block_data);
         }
+        file.write_all(&read_data)?;
         Ok(Self { file, index })
     }
 }
@@ -121,12 +147,12 @@ mod tests {
         cleanup_file(path);
         assert_eq!(
             vec![
-                ([97, 98, 99, 48, 48].as_ref(), 0),
-                (&[97, 98, 99, 48, 51], 75),
-                (&[97, 98, 99, 48, 54], 157),
-                (&[97, 98, 99, 48, 57], 223),
-                (&[97, 98, 99, 49, 50], 265),
-                (&[97, 98, 99, 49, 53], 307),
+                Block::new(&[97, 98, 99, 48, 48], 0, 75),
+                Block::new(&[97, 98, 99, 48, 51], 75, 82),
+                Block::new(&[97, 98, 99, 48, 54], 157, 66),
+                Block::new(&[97, 98, 99, 48, 57], 223, 42),
+                Block::new(&[97, 98, 99, 49, 50], 265, 42),
+                Block::new(&[97, 98, 99, 49, 53], 307, 14),
             ],
             table.index.items
         );
@@ -156,9 +182,10 @@ mod tests {
         let table = Table::new(path, pairs, 3).unwrap();
         cleanup_file(path);
         let index = table.index;
-        assert_eq!(index.get("a".as_bytes()), None);
-        assert_eq!(index.get("abc01".as_bytes()), Some(0));
-        assert_eq!(index.get("abc03".as_bytes()), Some(75));
-        assert_eq!(index.get("abc15".as_bytes()), Some(307));
+        dbg!(&index);
+        assert_eq!(None, index.get("a".as_bytes()));
+        assert_eq!(Some((0, 75)), index.get("abc01".as_bytes()));
+        assert_eq!(Some((75, 82)), index.get("abc03".as_bytes()));
+        assert_eq!(Some((307, 14)), index.get("abc15".as_bytes()));
     }
 }
