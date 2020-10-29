@@ -3,17 +3,17 @@ use serde::{Deserialize, Serialize};
 
 /// Internal representation of a key-value pair.
 #[derive(Clone, Debug, Deserialize, Serialize, Ord, PartialOrd, Eq, PartialEq)]
-pub struct InternalPair<'a> {
-    pub(crate) key: &'a [u8],
+pub struct InternalPair {
+    pub(crate) key: Vec<u8>,
     /// If this pair is deleted, `value` is `None`.
-    value: Option<&'a [u8]>,
+    value: Option<Vec<u8>>,
 }
 
-impl<'a> InternalPair<'a> {
-    pub fn new(pair: (&'a str, Option<&'a str>)) -> Self {
+impl InternalPair {
+    pub fn new(pair: (&str, Option<&str>)) -> Self {
         Self {
-            key: pair.0.as_bytes(),
-            value: pair.1.map(|v| v.as_bytes()),
+            key: pair.0.as_bytes().to_vec(),
+            value: pair.1.map(|v| v.as_bytes().to_vec()),
         }
     }
 
@@ -51,8 +51,36 @@ impl<'a> InternalPair<'a> {
     ///     InternalPair::new(("abc", Some("defg")))
     /// );
     /// ```
-    pub fn deserialize(bytes: &'a [u8]) -> Result<Self, Error> {
-        deserialize(bytes)
+    pub fn deserialize(bytes: Vec<u8>) -> Result<Self, Error> {
+        deserialize(&bytes)
+    }
+
+    pub fn deserialize_from_bytes(bytes: Vec<u8>) -> Result<Vec<Self>, Error> {
+        let mut pairs = vec![];
+        let mut i = 0;
+        while i < bytes.len() {
+            let key_length: usize = deserialize(&bytes[i..i + 8])?;
+            i += 8;
+            let key = bytes[i..i + key_length].to_vec();
+            i += key_length;
+            // pair without value
+            if bytes[i] == 0 {
+                i += 1;
+                pairs.push(InternalPair { key, value: None });
+                continue;
+            } else if bytes[i] == 1 {
+                i += 1;
+                let value_length: usize = deserialize(&bytes[i..i + 8])?;
+                i += 8;
+                let value = bytes[i..i + value_length].to_vec();
+                i += value_length;
+                pairs.push(InternalPair {
+                    key,
+                    value: Some(value),
+                });
+            }
+        }
+        Ok(pairs)
     }
 }
 
@@ -85,7 +113,7 @@ mod tests {
     #[test]
     fn deserialize_lacking_value() {
         let bytes = vec![3, 0, 0, 0, 0, 0, 0, 0, 97, 98, 99, 0];
-        let pair = InternalPair::deserialize(&bytes).unwrap();
+        let pair = InternalPair::deserialize(bytes).unwrap();
         assert_eq!(InternalPair::new(("abc", None)), pair);
     }
 
@@ -96,7 +124,7 @@ mod tests {
             150, 1, 16, 0, 0, 0, 0, 0, 0, 0, 209, 128, 208, 182, 208, 176, 208, 178, 209, 135, 208,
             184, 208, 189, 208, 176,
         ];
-        let pair = InternalPair::deserialize(&bytes).unwrap();
+        let pair = InternalPair::deserialize(bytes).unwrap();
         assert_eq!(InternalPair::new(("日本語💖", Some("ржавчина"))), pair);
     }
 
@@ -105,5 +133,17 @@ mod tests {
         let pair1 = InternalPair::new(("abc", Some("defg")));
         let pair2 = InternalPair::new(("日本語💖", Some("ржавчина")));
         assert!(pair1 < pair2);
+    }
+
+    #[test]
+    fn deserialize_from_bytes() {
+        let pairs = vec![
+            InternalPair::new(("abc00", Some("def"))),
+            InternalPair::new(("abc01", Some("defg"))),
+            InternalPair::new(("abc02", Some("de"))),
+            InternalPair::new(("abc03", Some("defgh"))),
+        ];
+        let bytes: Vec<u8> = pairs.iter().flat_map(|pair| pair.serialize()).collect();
+        assert_eq!(pairs, InternalPair::deserialize_from_bytes(bytes).unwrap());
     }
 }
