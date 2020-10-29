@@ -23,8 +23,7 @@ impl<'a> IndexEntries<'a> {
     /// If the key does not exist in the index, return minimum position at which it should be.
     /// If the key is smaller than `self.items[0]` in dictionary order, return `None` because the key does not exist in the SSTable.
     #[allow(dead_code)]
-    fn get(&self, pair: &InternalPair) -> Option<u64> {
-        let key = pair.key;
+    fn get(&self, key: &[u8]) -> Option<u64> {
         self.items
             .binary_search_by_key(&key, |&(key, _)| key)
             .or_else(|pos| if pos > 0 { Ok(pos - 1) } else { Err(()) })
@@ -157,15 +156,9 @@ mod tests {
         let table = Table::new(path, pairs, 3).unwrap();
         cleanup_file(path);
         let index = table.index;
-        assert_eq!(index.get(&InternalPair::new(("a", Some("defg")))), None);
-        assert_eq!(
-            index.get(&InternalPair::new(("abc01", Some("defg")))),
-            Some(0)
-        );
-        assert_eq!(
-            index.get(&InternalPair::new(("abc03", Some("defgh")))),
-            Some(75)
-        );
-        assert_eq!(index.get(&InternalPair::new(("abc15", None))), Some(307));
+        assert_eq!(index.get("a".as_bytes()), None);
+        assert_eq!(index.get("abc01".as_bytes()), Some(0));
+        assert_eq!(index.get("abc03".as_bytes()), Some(75));
+        assert_eq!(index.get("abc15".as_bytes()), Some(307));
     }
 }
