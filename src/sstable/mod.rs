@@ -14,8 +14,4 @@ pub(crate) mod tests {
         file.read_to_end(&mut buffer).unwrap();
         buffer
     }
-
-    pub(crate) fn cleanup_file<P: AsRef<Path>>(path: P) {
-        std::fs::remove_file(path).unwrap()
-    }
 }

@@ -1,13 +1,15 @@
 use crate::sstable::format::InternalPair;
+use crate::sstable::index::{Block, Index};
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufReader, Read, Seek, SeekFrom, Write};
-use std::path::Path;
-use crate::sstable::index::{Index, Block};
+use std::path::{Path, PathBuf};
 
 /// Represents a SSTable.
 #[derive(Debug)]
 pub struct Table {
-    /// Buffer of SSTable's file.  
+    /// Path to SSTable file
+    path: PathBuf,
+    /// Buffer of SSTable file.  
     /// Write action is taken just once, so it is not needed to use `BufWriter`.
     file_buffer: BufReader<File>,
     /// Stores pairs of key and position to start read the key from the file.
@@ -23,11 +25,13 @@ impl Table {
         pairs: Vec<InternalPair>,
         block_stride: usize,
     ) -> io::Result<Self> {
+        let mut path_buf = PathBuf::new();
+        path_buf.push(path);
         let mut file = OpenOptions::new()
             .create(true)
             .write(true)
             .read(true)
-            .open(path)?;
+            .open(path_buf.clone().as_path())?;
         let mut index = Index::new();
         let mut read_data = Vec::new();
 
@@ -44,9 +48,16 @@ impl Table {
         file.write_all(&read_data)?;
 
         let file_buffer = BufReader::new(file);
-        Ok(Self { file_buffer, index })
+        Ok(Self {
+            path: path_buf,
+            file_buffer,
+            index,
+        })
     }
 
+    /// Get key-value pair from SSTable file.
+    /// First, find block which stores the target pair.
+    /// Then search the block from the front.
     pub fn get(&mut self, key: &[u8]) -> io::Result<Option<InternalPair>> {
         let (search_origin, length) = match self.index.get(key) {
             Some(pos) => pos,
@@ -54,21 +65,28 @@ impl Table {
         };
         self.file_buffer
             .seek(SeekFrom::Start(search_origin as u64))?;
-        let mut buffer = vec![0; length];
-        self.file_buffer.read(&mut buffer)?;
+        let mut block_bytes = vec![0; length];
+        self.file_buffer.read(&mut block_bytes)?;
 
         // Handle this Result
-        let pairs = InternalPair::deserialize_from_bytes(&buffer).unwrap();
+        let pairs = InternalPair::deserialize_from_bytes(&block_bytes).unwrap();
         let pair = pairs.into_iter().find(|pair| pair.key == key);
         Ok(pair)
+    }
+}
+
+impl std::ops::Drop for Table {
+    /// Remove SSTable file when this is dropped.
+    fn drop(&mut self) {
+        std::fs::remove_file(self.path.as_path()).unwrap();
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sstable::tests::{cleanup_file, read_file_to_buffer};
-    
+    use crate::sstable::tests::read_file_to_buffer;
+
     #[test]
     fn table_creation() {
         let path = "test";
@@ -78,9 +96,8 @@ mod tests {
             InternalPair::new("日本語💖", Some("ржавчина")),
         ];
         let expected: Vec<u8> = pairs.iter().flat_map(|pair| pair.serialize()).collect();
-        let _ = Table::new(path, pairs, 1).unwrap();
+        let _table = Table::new(path, pairs, 1).unwrap();
         assert_eq!(expected, read_file_to_buffer(path));
-        cleanup_file(path);
     }
 
     #[test]
@@ -115,6 +132,20 @@ mod tests {
         );
         assert_eq!(None, table.get("abc011".as_bytes()).unwrap());
         assert_eq!(None, table.get("abc16".as_bytes()).unwrap());
-        cleanup_file(path);
+    }
+
+    #[test]
+    fn delete_table_file_in_drop() {
+        let path = Path::new("delete_table_file");
+        {
+            let pairs = vec![
+                InternalPair::new("abc00", Some("def")),
+                InternalPair::new("abc01", Some("defg")),
+                InternalPair::new("abc02", Some("de")),
+            ];
+            let _table = Table::new(path, pairs, 1);
+            assert!(path.exists());
+        }
+        assert!(!path.exists());
     }
 }
