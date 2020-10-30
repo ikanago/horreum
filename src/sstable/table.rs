@@ -1,6 +1,6 @@
 use crate::sstable::format::InternalPair;
 use std::fs::{File, OpenOptions};
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::io::{self, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
 /// Block is a group of keys.
@@ -58,8 +58,8 @@ impl Index {
 /// Represents a SSTable.
 #[derive(Debug)]
 pub struct Table {
-    // File to write data.
-    file: File,
+    // Buffer of SSTable's file.
+    file_buffer: BufReader<File>,
     // Stores pairs of key and position to start read the key from the file.
     index: Index,
 }
@@ -92,7 +92,9 @@ impl Table {
             read_data.append(&mut block_data);
         }
         file.write_all(&read_data)?;
-        Ok(Self { file, index })
+
+        let file_buffer = BufReader::new(file);
+        Ok(Self { file_buffer, index })
     }
 
     pub fn get(&mut self, key: &[u8]) -> io::Result<Option<InternalPair>> {
@@ -100,9 +102,10 @@ impl Table {
             Some(pos) => pos,
             None => return Ok(None),
         };
-        self.file.seek(SeekFrom::Start(search_origin as u64))?;
+        self.file_buffer
+            .seek(SeekFrom::Start(search_origin as u64))?;
         let mut buffer = vec![0; length];
-        self.file.read(&mut buffer)?;
+        self.file_buffer.read(&mut buffer)?;
 
         // Handle this Result
         let pairs = InternalPair::deserialize_from_bytes(&buffer).unwrap();
