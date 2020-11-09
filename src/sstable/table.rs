@@ -1,12 +1,13 @@
 use crate::sstable::format::InternalPair;
 use crate::sstable::index::{Block, Index};
+use bincode::{deserialize, Error};
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 /// Represents a SSTable.
 #[derive(Debug)]
-pub struct Table {
+pub struct SSTable {
     /// Path to SSTable file
     path: PathBuf,
     /// Buffer of SSTable file.  
@@ -16,7 +17,7 @@ pub struct Table {
     pub(crate) index: Index,
 }
 
-impl Table {
+impl SSTable {
     /// Create a new instance of `Table`.  
     /// Assume `pairs` is sorted.  
     /// Insert into an index every `block_stride` pair.
@@ -75,7 +76,41 @@ impl Table {
     }
 }
 
-impl std::ops::Drop for Table {
+impl IntoIterator for SSTable {
+    type Item = InternalPair;
+    type IntoIter = SSTableIterator;
+
+    fn into_iter(self) -> Self::IntoIter {
+        SSTableIterator::new(self.path, self.file_buffer)
+    }
+}
+
+#[derive(Debug)]
+pub struct SSTableIterator {
+    path: PathBuf,
+    read_buffer: BufReader<File>,
+    current_pos: u64,
+}
+
+impl SSTableIterator {
+    pub fn new(path: PathBuf, read_buffer: BufReader<File>) -> Self {
+        Self {
+            path,
+            read_buffer,
+            current_pos: 0,
+        }
+    }
+}
+
+impl Iterator for SSTableIterator {
+    type Item = InternalPair;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        None
+    }
+}
+
+impl std::ops::Drop for SSTableIterator {
     /// Remove SSTable file when this is dropped.
     fn drop(&mut self) {
         std::fs::remove_file(self.path.as_path()).unwrap();
@@ -85,7 +120,7 @@ impl std::ops::Drop for Table {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sstable::tests::read_file_to_buffer;
+    use crate::sstable::tests::*;
 
     #[test]
     fn table_creation() {
@@ -96,8 +131,9 @@ mod tests {
             InternalPair::new("日本語💖", Some("ржавчина")),
         ];
         let expected: Vec<u8> = pairs.iter().flat_map(|pair| pair.serialize()).collect();
-        let _table = Table::new(path, pairs, 1).unwrap();
+        let _table = SSTable::new(path, pairs, 1).unwrap();
         assert_eq!(expected, read_file_to_buffer(path));
+        remove_sstable_file(path);
     }
 
     #[test]
@@ -121,7 +157,7 @@ mod tests {
             InternalPair::new("abc14", None),
             InternalPair::new("abc15", None),
         ];
-        let mut table = Table::new(path, pairs, 3).unwrap();
+        let mut table = SSTable::new(path, pairs, 3).unwrap();
         assert_eq!(
             InternalPair::new("abc04", Some("defg")),
             table.get("abc04".as_bytes()).unwrap().unwrap()
@@ -132,20 +168,28 @@ mod tests {
         );
         assert_eq!(None, table.get("abc011".as_bytes()).unwrap());
         assert_eq!(None, table.get("abc16".as_bytes()).unwrap());
+        remove_sstable_file(path);
     }
 
-    #[test]
-    fn delete_table_file_in_drop() {
-        let path = Path::new("delete_table_file");
-        {
-            let pairs = vec![
-                InternalPair::new("abc00", Some("def")),
-                InternalPair::new("abc01", Some("defg")),
-                InternalPair::new("abc02", Some("de")),
-            ];
-            let _table = Table::new(path, pairs, 1);
-            assert!(path.exists());
-        }
-        assert!(!path.exists());
-    }
+//    #[test]
+//    fn iterate_table() {
+//        let path = Path::new("iterate_table");
+//        let pairs = vec![
+//            InternalPair::new("abc00", Some("def")),
+//            InternalPair::new("abc01", Some("defg")),
+//            InternalPair::new("abc02", None),
+//        ];
+//        let table = SSTable::new(path, pairs, 3).unwrap();
+//        let mut table_iter = table.into_iter();
+//        assert_eq!(
+//            Some(InternalPair::new("abc00", Some("def"))),
+//            table_iter.next()
+//        );
+//        assert_eq!(
+//            Some(InternalPair::new("abc01", Some("defg"))),
+//            table_iter.next()
+//        );
+//        assert_eq!(Some(InternalPair::new("abc02", None)), table_iter.next());
+//        assert_eq!(None, table_iter.next());
+//    }
 }
