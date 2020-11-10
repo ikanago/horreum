@@ -1,6 +1,5 @@
 use crate::sstable::format::InternalPair;
 use crate::sstable::index::{Block, Index};
-use bincode::{deserialize, Error};
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -88,15 +87,17 @@ impl IntoIterator for SSTable {
 #[derive(Debug)]
 pub struct SSTableIterator {
     path: PathBuf,
-    read_buffer: BufReader<File>,
+    file_buffer: BufReader<File>,
     current_pos: u64,
 }
 
 impl SSTableIterator {
-    pub fn new(path: PathBuf, read_buffer: BufReader<File>) -> Self {
+    pub fn new(path: PathBuf, file_buffer: BufReader<File>) -> Self {
+        let mut file_buffer = file_buffer;
+        file_buffer.seek(SeekFrom::Start(0)).unwrap();
         Self {
             path,
-            read_buffer,
+            file_buffer,
             current_pos: 0,
         }
     }
@@ -106,10 +107,21 @@ impl Iterator for SSTableIterator {
     type Item = InternalPair;
 
     fn next(&mut self) -> Option<Self::Item> {
-        None
+        match InternalPair::deserialize(&mut self.file_buffer) {
+            Ok(pair) => {
+                if pair.key.len() > 0 {
+                    Some(pair)
+                } else {
+                    None
+                }
+            }
+            Err(_) => None,
+        }
     }
 }
 
+/// `SSTable` is not implemented `Drop` to remove data file
+/// because all of `SSTable`s should be to converted into `SSTableIterator` before they are merged,
 impl std::ops::Drop for SSTableIterator {
     /// Remove SSTable file when this is dropped.
     fn drop(&mut self) {
@@ -171,25 +183,25 @@ mod tests {
         remove_sstable_file(path);
     }
 
-    //    #[test]
-    //    fn iterate_table() {
-    //        let path = Path::new("iterate_table");
-    //        let pairs = vec![
-    //            InternalPair::new("abc00", Some("def")),
-    //            InternalPair::new("abc01", Some("defg")),
-    //            InternalPair::new("abc02", None),
-    //        ];
-    //        let table = SSTable::new(path, pairs, 3).unwrap();
-    //        let mut table_iter = table.into_iter();
-    //        assert_eq!(
-    //            Some(InternalPair::new("abc00", Some("def"))),
-    //            table_iter.next()
-    //        );
-    //        assert_eq!(
-    //            Some(InternalPair::new("abc01", Some("defg"))),
-    //            table_iter.next()
-    //        );
-    //        assert_eq!(Some(InternalPair::new("abc02", None)), table_iter.next());
-    //        assert_eq!(None, table_iter.next());
-    //    }
+    #[test]
+    fn iterate_table() {
+        let path = Path::new("iterate_table");
+        let pairs = vec![
+            InternalPair::new("abc00", Some("def")),
+            InternalPair::new("abc01", Some("defg")),
+            InternalPair::new("abc02", None),
+        ];
+        let table = SSTable::new(path, pairs, 3).unwrap();
+        let mut table_iter = table.into_iter();
+        assert_eq!(
+            Some(InternalPair::new("abc00", Some("def"))),
+            table_iter.next()
+        );
+        assert_eq!(
+            Some(InternalPair::new("abc01", Some("defg"))),
+            table_iter.next()
+        );
+        assert_eq!(Some(InternalPair::new("abc02", None)), table_iter.next());
+        assert_eq!(None, table_iter.next());
+    }
 }

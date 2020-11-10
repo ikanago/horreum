@@ -72,19 +72,7 @@ impl InternalPair {
     /// );
     /// ```
     pub fn deserialize<R: Read>(reader: &mut R) -> Result<Self, Error> {
-        let mut length_buffer = vec![0; 16];
-        reader.read(&mut length_buffer)?;
-        let key_length: usize = deserialize(&length_buffer[..8])?;
-        let value_length: usize = deserialize(&length_buffer[8..])?;
-        let mut content_buffer = vec![0; key_length + value_length];
-        reader.read(&mut content_buffer)?;
-        let key = content_buffer[..key_length].to_vec();
-        let value = if value_length > 0 {
-            Some(content_buffer[key_length..].to_vec())
-        } else {
-            None
-        };
-        Ok(InternalPair { key, value })
+        InternalPair::deserialize_inner(reader)
     }
 
     /// Deserialize bytes of pairs.
