@@ -70,7 +70,7 @@ impl SSTable {
         self.file_buffer.read(&mut block_bytes)?;
 
         // Handle this Result
-        let pairs = InternalPair::deserialize_from_bytes(&block_bytes).unwrap();
+        let pairs = InternalPair::deserialize_from_bytes(&mut block_bytes).unwrap();
         let pair = pairs.into_iter().find(|pair| pair.key == key);
         Ok(pair)
     }
@@ -171,25 +171,25 @@ mod tests {
         remove_sstable_file(path);
     }
 
-//    #[test]
-//    fn iterate_table() {
-//        let path = Path::new("iterate_table");
-//        let pairs = vec![
-//            InternalPair::new("abc00", Some("def")),
-//            InternalPair::new("abc01", Some("defg")),
-//            InternalPair::new("abc02", None),
-//        ];
-//        let table = SSTable::new(path, pairs, 3).unwrap();
-//        let mut table_iter = table.into_iter();
-//        assert_eq!(
-//            Some(InternalPair::new("abc00", Some("def"))),
-//            table_iter.next()
-//        );
-//        assert_eq!(
-//            Some(InternalPair::new("abc01", Some("defg"))),
-//            table_iter.next()
-//        );
-//        assert_eq!(Some(InternalPair::new("abc02", None)), table_iter.next());
-//        assert_eq!(None, table_iter.next());
-//    }
+    //    #[test]
+    //    fn iterate_table() {
+    //        let path = Path::new("iterate_table");
+    //        let pairs = vec![
+    //            InternalPair::new("abc00", Some("def")),
+    //            InternalPair::new("abc01", Some("defg")),
+    //            InternalPair::new("abc02", None),
+    //        ];
+    //        let table = SSTable::new(path, pairs, 3).unwrap();
+    //        let mut table_iter = table.into_iter();
+    //        assert_eq!(
+    //            Some(InternalPair::new("abc00", Some("def"))),
+    //            table_iter.next()
+    //        );
+    //        assert_eq!(
+    //            Some(InternalPair::new("abc01", Some("defg"))),
+    //            table_iter.next()
+    //        );
+    //        assert_eq!(Some(InternalPair::new("abc02", None)), table_iter.next());
+    //        assert_eq!(None, table_iter.next());
+    //    }
 }

@@ -16,7 +16,7 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn remove_sstable_file<P: AsRef<Path>>(path: P) {
-        // Because this function is only called from test, it can panic 
+        // Because this function is only called from test, it can panic
         // if error occurs.
         std::fs::remove_file(path).unwrap()
     }

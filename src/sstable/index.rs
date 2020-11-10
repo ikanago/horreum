@@ -81,12 +81,12 @@ mod tests {
         let table = SSTable::new(path, pairs, 3).unwrap();
         assert_eq!(
             vec![
-                Block::new(&[97, 98, 99, 48, 48], 0, 75),
-                Block::new(&[97, 98, 99, 48, 51], 75, 82),
-                Block::new(&[97, 98, 99, 48, 54], 157, 66),
-                Block::new(&[97, 98, 99, 48, 57], 223, 42),
-                Block::new(&[97, 98, 99, 49, 50], 265, 42),
-                Block::new(&[97, 98, 99, 49, 53], 307, 14),
+                Block::new(&[97, 98, 99, 48, 48], 0, 72),
+                Block::new(&[97, 98, 99, 48, 51], 72, 79),
+                Block::new(&[97, 98, 99, 48, 54], 151, 71),
+                Block::new(&[97, 98, 99, 48, 57], 222, 63),
+                Block::new(&[97, 98, 99, 49, 50], 285, 63),
+                Block::new(&[97, 98, 99, 49, 53], 348, 21),
             ],
             table.index.items
         );
@@ -116,9 +116,9 @@ mod tests {
         ];
         let table = SSTable::new(path, pairs, 3).unwrap();
         assert_eq!(None, table.index.get("a".as_bytes()));
-        assert_eq!(Some((0, 75)), table.index.get("abc01".as_bytes()));
-        assert_eq!(Some((75, 82)), table.index.get("abc03".as_bytes()));
-        assert_eq!(Some((307, 14)), table.index.get("abc15".as_bytes()));
+        assert_eq!(Some((0, 72)), table.index.get("abc01".as_bytes()));
+        assert_eq!(Some((72, 79)), table.index.get("abc03".as_bytes()));
+        assert_eq!(Some((348, 21)), table.index.get("abc15".as_bytes()));
         remove_sstable_file(path);
     }
 }
