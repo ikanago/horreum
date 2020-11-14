@@ -1,5 +1,6 @@
 pub mod format;
 mod index;
+pub mod manager;
 pub mod table;
 
 #[cfg(test)]
@@ -19,5 +20,9 @@ pub(crate) mod tests {
         // Because this function is only called from test, it can panic
         // if error occurs.
         std::fs::remove_file(path).unwrap()
+    }
+
+    pub(crate) fn remove_sstable_directory<P: AsRef<Path>>(path: P) {
+        std::fs::remove_dir_all(path).unwrap()
     }
 }

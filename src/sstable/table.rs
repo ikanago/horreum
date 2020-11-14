@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 #[derive(Debug)]
 pub struct SSTable {
     /// Path to SSTable file
-    path: PathBuf,
+    pub(crate) path: PathBuf,
     /// Buffer of SSTable file.  
     /// Write action is taken just once, so it is not needed to use `BufWriter`.
     file_buffer: BufReader<File>,
