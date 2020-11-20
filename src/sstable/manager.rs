@@ -42,7 +42,7 @@ impl SSTableManager {
 
     /// Get a pair by given key among SSTables.
     pub fn get(&mut self, key: &[u8]) -> io::Result<Option<InternalPair>> {
-        for table in self.tables.iter_mut().rev() {
+        for table in self.tables.iter_mut() {
             let pair = table.get(key)?;
             if pair.is_some() {
                 return Ok(pair);
