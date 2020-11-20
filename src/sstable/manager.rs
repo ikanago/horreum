@@ -1,7 +1,7 @@
 use crate::sstable::format::InternalPair;
 use crate::sstable::table::{SSTable, SSTableIterator};
-use std::io;
 use std::collections::VecDeque;
+use std::io;
 use std::mem;
 use std::path::{Path, PathBuf};
 
@@ -51,18 +51,36 @@ impl SSTableManager {
         Ok(None)
     }
 
+    /// Compact current all SSTables into a new one.
     pub fn compact(&mut self) -> io::Result<()> {
-        let n_tables = self.tables.len();
+        let num_tables = self.tables.len();
         let tables = mem::replace(&mut self.tables, VecDeque::new());
-        let mut table_iters = tables
+        let table_iterators = tables
             .into_iter()
             .map(|table| table.into_iter())
             .collect::<Vec<SSTableIterator>>();
-        let mut merge_candidates = (0..n_tables)
-            .map(|i| table_iters[i].next())
-            .collect::<Vec<Option<InternalPair>>>();
-        let mut pairs = Vec::new();
+        let pairs = Self::compact_inner(num_tables, table_iterators)?;
+        let table_path = self.new_table_path();
+        let merged_table = SSTable::new(table_path, pairs, self.block_stride)?;
+        self.tables.push_front(merged_table);
+        Ok(())
+    }
 
+    /// Read SSTable elements one by one for each SSTable and hold them as `merge_candidate`.
+    /// Select a minimum key of them to keep sorted order.
+    /// If there are multiple key of the same order, the newer one is selected.
+    fn compact_inner(
+        // Because `self.tables` is replaced with new `VecDeque` in `compact()`,
+        // `num_tables` is given explicitly.
+        num_tables: usize,
+        mut table_iterators: Vec<impl Iterator<Item = InternalPair>>,
+    ) -> io::Result<Vec<InternalPair>> {
+        // Array of current first elements for each SSTable.
+        let mut merge_candidates = (0..num_tables)
+            .map(|i| table_iterators[i].next())
+            .collect::<Vec<Option<InternalPair>>>();
+
+        let mut pairs = Vec::new();
         loop {
             let min_pair = merge_candidates
                 .iter()
@@ -80,7 +98,7 @@ impl SSTableManager {
                 .for_each(|(i, pair_opt)| {
                     if let Some(pair) = pair_opt {
                         if pair.key == min_key {
-                            *pair_opt = table_iters[i].next();
+                            *pair_opt = table_iterators[i].next();
                         }
                     }
                 });
@@ -88,10 +106,7 @@ impl SSTableManager {
                 break;
             }
         }
-        let table_path = self.new_table_path();
-        let merged_table = SSTable::new("hoge", pairs, self.block_stride)?;
-        self.tables.push_front(merged_table);
-        Ok(())
+        Ok(pairs)
     }
 }
 
@@ -153,43 +168,35 @@ mod tests {
 
     #[test]
     fn compaction() {
-        let path = "compaction";
-        let _ = std::fs::create_dir(path);
-        let mut manager = SSTableManager::new(path, 2).unwrap();
-        let pairs1 = vec![
+        let table1 = vec![
             InternalPair::new("abc00", Some("def")),
             InternalPair::new("abc01", Some("defg")),
             InternalPair::new("abc02", Some("xyz")),
             InternalPair::new("abc03", Some("defg")),
         ];
-        let pairs2 = vec![
+        let table2 = vec![
             InternalPair::new("abc00", Some("xyz")),
             InternalPair::new("abc01", None),
         ];
-        let pairs3 = vec![
+        let table3 = vec![
             InternalPair::new("abc02", Some("def")),
             InternalPair::new("abc04", Some("hoge")),
             InternalPair::new("abc05", None),
         ];
-        manager.create(pairs1).unwrap();
-        manager.create(pairs2).unwrap();
-        manager.create(pairs3).unwrap();
-        manager.compact().unwrap();
-        let expected: Vec<u8> = vec![
+        let expected = vec![
             InternalPair::new("abc00", Some("xyz")),
             InternalPair::new("abc01", None),
             InternalPair::new("abc02", Some("def")),
             InternalPair::new("abc03", Some("defg")),
             InternalPair::new("abc04", Some("hoge")),
             InternalPair::new("abc05", None),
-        ]
-        .iter()
-        .flat_map(|pair| pair.serialize())
-        .collect();
+        ];
+        let tables = vec![table3, table2, table1];
+        let num_table = tables.len();
+        let table_iterators = tables.into_iter().map(|table| table.into_iter()).collect();
         assert_eq!(
             expected,
-            read_file_to_buffer(manager.tables[0].path.as_path())
+            SSTableManager::compact_inner(num_table, table_iterators).unwrap()
         );
-        remove_sstable_directory(path);
     }
 }
