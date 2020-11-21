@@ -31,7 +31,7 @@ impl SSTable {
             .create(true)
             .write(true)
             .read(true)
-            .open(path_buf.clone().as_path())?;
+            .open(path_buf.as_path())?;
         let mut index = Index::new();
         let mut read_data = Vec::new();
 
@@ -66,7 +66,7 @@ impl SSTable {
         self.file_buffer
             .seek(SeekFrom::Start(search_origin as u64))?;
         let mut block_bytes = vec![0; length];
-        self.file_buffer.read(&mut block_bytes)?;
+        self.file_buffer.read_exact(&mut block_bytes)?;
 
         // Handle this Result
         let pairs = InternalPair::deserialize_from_bytes(&mut block_bytes).unwrap();
@@ -109,7 +109,7 @@ impl Iterator for SSTableIterator {
     fn next(&mut self) -> Option<Self::Item> {
         match InternalPair::deserialize(&mut self.file_buffer) {
             Ok(pair) => {
-                if pair.key.len() > 0 {
+                if !pair.key.is_empty() {
                     Some(pair)
                 } else {
                     None
