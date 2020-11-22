@@ -55,7 +55,7 @@ mod tests {
     #[test]
     fn read() {
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
-        let mut file = PersistedFile::new("read", &data).unwrap();
+        let mut file = PersistedFile::new("test_read", &data).unwrap();
         let mut buffer = vec![0; 4];
         file.read_exact(&mut buffer).unwrap();
         assert_eq!(vec![1, 2, 3, 4], buffer);

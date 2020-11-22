@@ -53,13 +53,11 @@ impl Index {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sstable::format::InternalPair;
-    use crate::sstable::storage::PersistedFile;
-    use crate::sstable::table::SSTable;
+    use crate::sstable::{format::InternalPair, storage::PersistedFile, table::SSTable};
 
     #[test]
     fn index_creation() {
-        let path = "index_test";
+        let path = "test_index_creation";
         let pairs = vec![
             InternalPair::new("abc00", Some("def")),
             InternalPair::new("abc01", Some("defg")),
@@ -96,7 +94,7 @@ mod tests {
 
     #[test]
     fn index_get() {
-        let path = "index_get";
+        let path = "test_index_get";
         let pairs = vec![
             InternalPair::new("abc00", Some("def")),
             InternalPair::new("abc01", Some("defg")),

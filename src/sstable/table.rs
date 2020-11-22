@@ -97,23 +97,14 @@ impl Iterator for SSTableIterator {
     }
 }
 
-/// `SSTable` is not implemented `Drop` to remove data file
-/// because all of `SSTable`s should be to converted into `SSTableIterator` before they are merged,
-// impl std::ops::Drop for SSTableIterator {
-//     /// Remove SSTable file when this is dropped.
-//     fn drop(&mut self) {
-//         std::fs::remove_file(self.file.path.as_path()).unwrap();
-//     }
-// }
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::sstable::tests::*;
 
     #[test]
-    fn table_creation() {
-        let path = "test";
+    fn create_table() {
+        let path = "test_create_table";
         let pairs = vec![
             InternalPair::new("abc", Some("defg")),
             InternalPair::new("abc", None),
@@ -127,7 +118,7 @@ mod tests {
 
     #[test]
     fn search_table() {
-        let path = "search_table";
+        let path = "test_search_table";
         let pairs = vec![
             InternalPair::new("abc00", Some("def")),
             InternalPair::new("abc01", Some("defg")),
@@ -163,7 +154,7 @@ mod tests {
 
     #[test]
     fn iterate_table() {
-        let path = "iterate_table";
+        let path = "test_iterate_table";
         let pairs = vec![
             InternalPair::new("abc00", Some("def")),
             InternalPair::new("abc01", Some("defg")),

@@ -122,7 +122,7 @@ mod tests {
 
     #[test]
     fn get_pairs() {
-        let path = "get_create";
+        let path = "test_get_create";
         let _ = std::fs::create_dir(path);
         let mut manager = SSTableManager::new(path, 2).unwrap();
         let pairs1 = vec![
