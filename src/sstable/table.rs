@@ -1,17 +1,13 @@
 use crate::sstable::format::InternalPair;
 use crate::sstable::index::{Block, Index};
-use std::fs::{File, OpenOptions};
-use std::io::{self, BufReader, Read, Seek, SeekFrom, Write};
-use std::path::{Path, PathBuf};
+use crate::sstable::storage::PersistedFile;
+use std::io::{self, Seek, SeekFrom};
 
 /// Represents a SSTable.
 #[derive(Debug)]
 pub struct SSTable {
-    /// Path to SSTable file
-    pub(crate) path: PathBuf,
-    /// Buffer of SSTable file.  
-    /// Write action is taken just once, so it is not needed to use `BufWriter`.
-    file_buffer: BufReader<File>,
+    /// API to access an SSTable file.
+    pub(crate) file: PersistedFile,
     /// Stores pairs of key and position to start read the key from the file.
     pub(crate) index: Index,
 }
@@ -20,39 +16,23 @@ impl SSTable {
     /// Create a new instance of `Table`.  
     /// Assume `pairs` is sorted.  
     /// Insert into an index every `block_stride` pair.
-    pub fn new<P: AsRef<Path>>(
-        path: P,
+    pub fn new(
+        file: PersistedFile,
         pairs: Vec<InternalPair>,
         block_stride: usize,
     ) -> io::Result<Self> {
-        let mut path_buf = PathBuf::new();
-        path_buf.push(path);
-        let mut file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .read(true)
-            .open(path_buf.as_path())?;
         let mut index = Index::new();
         let mut read_data = Vec::new();
 
         for pair_chunk in pairs.chunks(block_stride) {
             let mut block = Block::new(&pair_chunk[0].key, read_data.len(), 0);
-            let mut block_data: Vec<u8> = pair_chunk
-                .iter()
-                .flat_map(|pair| pair.serialize())
-                .collect();
+            let mut block_data: Vec<u8> = InternalPair::serialize_flatten(pair_chunk);
             block.set_length(block_data.len());
             index.push(block);
             read_data.append(&mut block_data);
         }
-        file.write_all(&read_data)?;
 
-        let file_buffer = BufReader::new(file);
-        Ok(Self {
-            path: path_buf,
-            file_buffer,
-            index,
-        })
+        Ok(Self { file, index })
     }
 
     /// Get key-value pair from SSTable file.
@@ -63,10 +43,7 @@ impl SSTable {
             Some(pos) => pos,
             None => return Ok(None),
         };
-        self.file_buffer
-            .seek(SeekFrom::Start(search_origin as u64))?;
-        let mut block_bytes = vec![0; length];
-        self.file_buffer.read_exact(&mut block_bytes)?;
+        let mut block_bytes = self.file.read_at(search_origin, length)?;
 
         // Handle this Result
         let pairs = InternalPair::deserialize_from_bytes(&mut block_bytes).unwrap();
@@ -80,26 +57,20 @@ impl IntoIterator for SSTable {
     type IntoIter = SSTableIterator;
 
     fn into_iter(self) -> Self::IntoIter {
-        SSTableIterator::new(self.path, self.file_buffer)
+        SSTableIterator::new(self.file)
     }
 }
 
 #[derive(Debug)]
 pub struct SSTableIterator {
-    path: PathBuf,
-    file_buffer: BufReader<File>,
-    current_pos: u64,
+    file: PersistedFile,
 }
 
 impl SSTableIterator {
-    pub fn new(path: PathBuf, file_buffer: BufReader<File>) -> Self {
-        let mut file_buffer = file_buffer;
-        file_buffer.seek(SeekFrom::Start(0)).unwrap();
-        Self {
-            path,
-            file_buffer,
-            current_pos: 0,
-        }
+    pub fn new(file: PersistedFile) -> Self {
+        let mut file = file;
+        file.buffer.seek(SeekFrom::Start(0)).unwrap();
+        Self { file }
     }
 }
 
@@ -107,7 +78,7 @@ impl Iterator for SSTableIterator {
     type Item = InternalPair;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match InternalPair::deserialize(&mut self.file_buffer) {
+        match InternalPair::deserialize(&mut self.file) {
             Ok(pair) => {
                 if !pair.key.is_empty() {
                     Some(pair)
@@ -115,17 +86,11 @@ impl Iterator for SSTableIterator {
                     None
                 }
             }
-            Err(_) => None,
+            Err(e) => {
+                dbg!(e);
+                None
+            }
         }
-    }
-}
-
-/// `SSTable` is not implemented `Drop` to remove data file
-/// because all of `SSTable`s should be to converted into `SSTableIterator` before they are merged,
-impl std::ops::Drop for SSTableIterator {
-    /// Remove SSTable file when this is dropped.
-    fn drop(&mut self) {
-        std::fs::remove_file(self.path.as_path()).unwrap();
     }
 }
 
@@ -135,22 +100,22 @@ mod tests {
     use crate::sstable::tests::*;
 
     #[test]
-    fn table_creation() {
-        let path = "test";
+    fn create_table() {
+        let path = "test_create_table";
         let pairs = vec![
             InternalPair::new("abc", Some("defg")),
             InternalPair::new("abc", None),
             InternalPair::new("日本語💖", Some("ржавчина")),
         ];
-        let expected: Vec<u8> = pairs.iter().flat_map(|pair| pair.serialize()).collect();
-        let _table = SSTable::new(path, pairs, 1).unwrap();
+        let expected: Vec<u8> = InternalPair::serialize_flatten(&pairs);
+        let file = PersistedFile::new(path, &expected.clone()).unwrap();
+        let _table = SSTable::new(file, pairs, 1).unwrap();
         assert_eq!(expected, read_file_to_buffer(path));
-        remove_sstable_file(path);
     }
 
     #[test]
     fn search_table() {
-        let path = "search_table";
+        let path = "test_search_table";
         let pairs = vec![
             InternalPair::new("abc00", Some("def")),
             InternalPair::new("abc01", Some("defg")),
@@ -169,7 +134,9 @@ mod tests {
             InternalPair::new("abc14", None),
             InternalPair::new("abc15", None),
         ];
-        let mut table = SSTable::new(path, pairs, 3).unwrap();
+        let bytes: Vec<u8> = InternalPair::serialize_flatten(&pairs);
+        let file = PersistedFile::new(path, &bytes).unwrap();
+        let mut table = SSTable::new(file, pairs, 3).unwrap();
         assert_eq!(
             InternalPair::new("abc04", Some("defg")),
             table.get("abc04".as_bytes()).unwrap().unwrap()
@@ -180,18 +147,19 @@ mod tests {
         );
         assert_eq!(None, table.get("abc011".as_bytes()).unwrap());
         assert_eq!(None, table.get("abc16".as_bytes()).unwrap());
-        remove_sstable_file(path);
     }
 
     #[test]
     fn iterate_table() {
-        let path = Path::new("iterate_table");
+        let path = "test_iterate_table";
         let pairs = vec![
             InternalPair::new("abc00", Some("def")),
             InternalPair::new("abc01", Some("defg")),
             InternalPair::new("abc02", None),
         ];
-        let table = SSTable::new(path, pairs, 3).unwrap();
+        let bytes: Vec<u8> = InternalPair::serialize_flatten(&pairs);
+        let file = PersistedFile::new(path, &bytes).unwrap();
+        let table = SSTable::new(file, pairs, 3).unwrap();
         let mut table_iter = table.into_iter();
         assert_eq!(
             Some(InternalPair::new("abc00", Some("def"))),

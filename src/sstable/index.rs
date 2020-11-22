@@ -53,13 +53,11 @@ impl Index {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sstable::format::InternalPair;
-    use crate::sstable::table::SSTable;
-    use crate::sstable::tests::*;
+    use crate::sstable::{format::InternalPair, storage::PersistedFile, table::SSTable};
 
     #[test]
     fn index_creation() {
-        let path = "index_test";
+        let path = "test_index_creation";
         let pairs = vec![
             InternalPair::new("abc00", Some("def")),
             InternalPair::new("abc01", Some("defg")),
@@ -78,7 +76,9 @@ mod tests {
             InternalPair::new("abc14", None),
             InternalPair::new("abc15", None),
         ];
-        let table = SSTable::new(path, pairs, 3).unwrap();
+        let bytes: Vec<u8> = InternalPair::serialize_flatten(&pairs);
+        let file = PersistedFile::new(path, &bytes).unwrap();
+        let table = SSTable::new(file, pairs, 3).unwrap();
         assert_eq!(
             vec![
                 Block::new(&[97, 98, 99, 48, 48], 0, 72),
@@ -90,12 +90,11 @@ mod tests {
             ],
             table.index.items
         );
-        remove_sstable_file(path);
     }
 
     #[test]
     fn index_get() {
-        let path = "index_get";
+        let path = "test_index_get";
         let pairs = vec![
             InternalPair::new("abc00", Some("def")),
             InternalPair::new("abc01", Some("defg")),
@@ -114,11 +113,12 @@ mod tests {
             InternalPair::new("abc14", None),
             InternalPair::new("abc15", None),
         ];
-        let table = SSTable::new(path, pairs, 3).unwrap();
+        let bytes: Vec<u8> = InternalPair::serialize_flatten(&pairs);
+        let file = PersistedFile::new(path, &bytes).unwrap();
+        let table = SSTable::new(file, pairs, 3).unwrap();
         assert_eq!(None, table.index.get("a".as_bytes()));
         assert_eq!(Some((0, 72)), table.index.get("abc01".as_bytes()));
         assert_eq!(Some((72, 79)), table.index.get("abc03".as_bytes()));
         assert_eq!(Some((348, 21)), table.index.get("abc15".as_bytes()));
-        remove_sstable_file(path);
     }
 }

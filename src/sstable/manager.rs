@@ -1,4 +1,5 @@
 use crate::sstable::format::InternalPair;
+use crate::sstable::storage::PersistedFile;
 use crate::sstable::table::{SSTable, SSTableIterator};
 use std::collections::VecDeque;
 use std::io;
@@ -29,7 +30,9 @@ impl SSTableManager {
     /// Create a new SSTable with given pairs.
     pub fn create(&mut self, pairs: Vec<InternalPair>) -> io::Result<()> {
         let table_path = self.new_table_path();
-        let table = SSTable::new(table_path, pairs, self.block_stride)?;
+        let bytes: Vec<u8> = InternalPair::serialize_flatten(&pairs);
+        let file = PersistedFile::new(table_path, &bytes).unwrap();
+        let table = SSTable::new(file, pairs, 3).unwrap();
         self.tables.push_front(table);
         Ok(())
     }
@@ -60,8 +63,11 @@ impl SSTableManager {
             .map(|table| table.into_iter())
             .collect::<Vec<SSTableIterator>>();
         let pairs = Self::compact_inner(num_tables, table_iterators)?;
+
         let table_path = self.new_table_path();
-        let merged_table = SSTable::new(table_path, pairs, self.block_stride)?;
+        let bytes: Vec<u8> = pairs.iter().flat_map(|pair| pair.serialize()).collect();
+        let file = PersistedFile::new(table_path, &bytes).unwrap();
+        let merged_table = SSTable::new(file, pairs, self.block_stride)?;
         self.tables.push_front(merged_table);
         Ok(())
     }
@@ -113,30 +119,10 @@ impl SSTableManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sstable::tests::*;
-
-    #[test]
-    fn create() {
-        let path = "test_create";
-        let _ = std::fs::create_dir(path);
-        let mut manager = SSTableManager::new(path, 2).unwrap();
-        let pairs = vec![
-            InternalPair::new("abc00", Some("def")),
-            InternalPair::new("abc01", Some("defg")),
-            InternalPair::new("abc02", None),
-        ];
-        let expected: Vec<u8> = pairs.iter().flat_map(|pair| pair.serialize()).collect();
-        manager.create(pairs).unwrap();
-        assert_eq!(
-            expected,
-            read_file_to_buffer(manager.tables[0].path.as_path())
-        );
-        remove_sstable_directory(path);
-    }
 
     #[test]
     fn get_pairs() {
-        let path = "get_create";
+        let path = "test_get_create";
         let _ = std::fs::create_dir(path);
         let mut manager = SSTableManager::new(path, 2).unwrap();
         let pairs1 = vec![
@@ -163,7 +149,6 @@ mod tests {
             InternalPair::new("abc02", Some("def")),
             manager.get("abc02".as_bytes()).unwrap().unwrap()
         );
-        remove_sstable_directory(path);
     }
 
     #[test]
