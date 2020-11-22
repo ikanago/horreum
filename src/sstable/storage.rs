@@ -41,13 +41,6 @@ impl Read for PersistedFile {
     }
 }
 
-impl std::ops::Drop for PersistedFile {
-    /// Remove SSTable file when this is dropped.
-    fn drop(&mut self) {
-        std::fs::remove_file(self.path.as_path()).unwrap();
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
