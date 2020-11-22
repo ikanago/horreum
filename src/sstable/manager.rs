@@ -30,7 +30,7 @@ impl SSTableManager {
     /// Create a new SSTable with given pairs.
     pub fn create(&mut self, pairs: Vec<InternalPair>) -> io::Result<()> {
         let table_path = self.new_table_path();
-        let bytes: Vec<u8> = pairs.iter().flat_map(|pair| pair.serialize()).collect();
+        let bytes: Vec<u8> = InternalPair::serialize_flatten(&pairs);
         let file = PersistedFile::new(table_path, &bytes).unwrap();
         let table = SSTable::new(file, pairs, 3).unwrap();
         self.tables.push_front(table);

@@ -56,6 +56,29 @@ impl InternalPair {
         buffer
     }
 
+    /// Serialize each elements in `pairs` and flatten vector of bytes.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use horreum::sstable::format::InternalPair;
+    /// let pairs = vec![
+    ///     InternalPair::new("abc00", Some("def")),
+    ///     InternalPair::new("abc01", Some("defg")),
+    ///     InternalPair::new("abc02", Some("de")),
+    /// ];
+    /// assert_eq!(vec![
+    ///        5, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 97, 98, 99, 48, 48, 100, 101, 102,
+    ///        5, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 97, 98, 99, 48, 49, 100, 101, 102, 103,
+    ///        5, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 97, 98, 99, 48, 50, 100, 101,
+    ///     ],
+    ///     InternalPair::serialize_flatten(&pairs)
+    /// );
+    /// ```
+    pub fn serialize_flatten(pairs: &[InternalPair]) -> Vec<u8> {
+        pairs.iter().flat_map(|pair| pair.serialize()).collect()
+    }
+
     /// Deserialize `Vec<u8>` into struct's members.
     /// # Example
     ///

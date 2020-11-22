@@ -76,7 +76,7 @@ mod tests {
             InternalPair::new("abc14", None),
             InternalPair::new("abc15", None),
         ];
-        let bytes: Vec<u8> = pairs.iter().flat_map(|pair| pair.serialize()).collect();
+        let bytes: Vec<u8> = InternalPair::serialize_flatten(&pairs);
         let file = PersistedFile::new(path, &bytes).unwrap();
         let table = SSTable::new(file, pairs, 3).unwrap();
         assert_eq!(
@@ -113,7 +113,7 @@ mod tests {
             InternalPair::new("abc14", None),
             InternalPair::new("abc15", None),
         ];
-        let bytes: Vec<u8> = pairs.iter().flat_map(|pair| pair.serialize()).collect();
+        let bytes: Vec<u8> = InternalPair::serialize_flatten(&pairs);
         let file = PersistedFile::new(path, &bytes).unwrap();
         let table = SSTable::new(file, pairs, 3).unwrap();
         assert_eq!(None, table.index.get("a".as_bytes()));

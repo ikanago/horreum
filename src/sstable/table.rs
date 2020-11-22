@@ -26,10 +26,7 @@ impl SSTable {
 
         for pair_chunk in pairs.chunks(block_stride) {
             let mut block = Block::new(&pair_chunk[0].key, read_data.len(), 0);
-            let mut block_data: Vec<u8> = pair_chunk
-                .iter()
-                .flat_map(|pair| pair.serialize())
-                .collect();
+            let mut block_data: Vec<u8> = InternalPair::serialize_flatten(pair_chunk);
             block.set_length(block_data.len());
             index.push(block);
             read_data.append(&mut block_data);
@@ -110,7 +107,7 @@ mod tests {
             InternalPair::new("abc", None),
             InternalPair::new("日本語💖", Some("ржавчина")),
         ];
-        let expected: Vec<u8> = pairs.iter().flat_map(|pair| pair.serialize()).collect();
+        let expected: Vec<u8> = InternalPair::serialize_flatten(&pairs);
         let file = PersistedFile::new(path, &expected.clone()).unwrap();
         let _table = SSTable::new(file, pairs, 1).unwrap();
         assert_eq!(expected, read_file_to_buffer(path));
@@ -137,7 +134,7 @@ mod tests {
             InternalPair::new("abc14", None),
             InternalPair::new("abc15", None),
         ];
-        let bytes: Vec<u8> = pairs.iter().flat_map(|pair| pair.serialize()).collect();
+        let bytes: Vec<u8> = InternalPair::serialize_flatten(&pairs);
         let file = PersistedFile::new(path, &bytes).unwrap();
         let mut table = SSTable::new(file, pairs, 3).unwrap();
         assert_eq!(
@@ -160,11 +157,8 @@ mod tests {
             InternalPair::new("abc01", Some("defg")),
             InternalPair::new("abc02", None),
         ];
-        let bytes: Vec<u8> = pairs.iter().flat_map(|pair| pair.serialize()).collect();
+        let bytes: Vec<u8> = InternalPair::serialize_flatten(&pairs);
         let file = PersistedFile::new(path, &bytes).unwrap();
-        // let mut bytes = vec![0; 16];
-        // file.read(&mut bytes).unwrap();
-        // dbg!(&bytes);
         let table = SSTable::new(file, pairs, 3).unwrap();
         let mut table_iter = table.into_iter();
         assert_eq!(
