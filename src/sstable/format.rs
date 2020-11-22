@@ -100,7 +100,7 @@ impl InternalPair {
         Ok(pairs)
     }
 
-    // Deserialize key and value from something implemented Read
+    // Deserialize key and value from something implemented `Read`
     // and return `Self` and the number of bytes read from.
     fn deserialize_inner<R: Read>(reader: &mut R) -> Result<Self, Error> {
         let mut length_buffer = vec![0; 16];
@@ -109,6 +109,7 @@ impl InternalPair {
         let value_length: usize = deserialize(&length_buffer[8..])?;
         let mut content_buffer = vec![0; key_length + value_length];
         reader.read_exact(&mut content_buffer)?;
+        dbg!(&length_buffer, &content_buffer);
         let key = content_buffer[..key_length].to_vec();
         let value = if value_length > 0 {
             Some(content_buffer[key_length..].to_vec())

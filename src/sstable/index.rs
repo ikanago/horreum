@@ -54,8 +54,8 @@ impl Index {
 mod tests {
     use super::*;
     use crate::sstable::format::InternalPair;
+    use crate::sstable::storage::PersistedFile;
     use crate::sstable::table::SSTable;
-    use crate::sstable::tests::*;
 
     #[test]
     fn index_creation() {
@@ -78,7 +78,9 @@ mod tests {
             InternalPair::new("abc14", None),
             InternalPair::new("abc15", None),
         ];
-        let table = SSTable::new(path, pairs, 3).unwrap();
+        let bytes: Vec<u8> = pairs.iter().flat_map(|pair| pair.serialize()).collect();
+        let file = PersistedFile::new(path, &bytes).unwrap();
+        let table = SSTable::new(file, pairs, 3).unwrap();
         assert_eq!(
             vec![
                 Block::new(&[97, 98, 99, 48, 48], 0, 72),
@@ -90,7 +92,6 @@ mod tests {
             ],
             table.index.items
         );
-        remove_sstable_file(path);
     }
 
     #[test]
@@ -114,11 +115,12 @@ mod tests {
             InternalPair::new("abc14", None),
             InternalPair::new("abc15", None),
         ];
-        let table = SSTable::new(path, pairs, 3).unwrap();
+        let bytes: Vec<u8> = pairs.iter().flat_map(|pair| pair.serialize()).collect();
+        let file = PersistedFile::new(path, &bytes).unwrap();
+        let table = SSTable::new(file, pairs, 3).unwrap();
         assert_eq!(None, table.index.get("a".as_bytes()));
         assert_eq!(Some((0, 72)), table.index.get("abc01".as_bytes()));
         assert_eq!(Some((72, 79)), table.index.get("abc03".as_bytes()));
         assert_eq!(Some((348, 21)), table.index.get("abc15".as_bytes()));
-        remove_sstable_file(path);
     }
 }

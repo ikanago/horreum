@@ -1,6 +1,7 @@
 pub mod format;
 mod index;
 pub mod manager;
+mod storage;
 pub mod table;
 
 #[cfg(test)]
