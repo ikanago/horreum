@@ -1,6 +1,6 @@
-use crate::sstable::format::InternalPair;
-use crate::sstable::index::Index;
-use crate::sstable::storage::PersistedFile;
+use super::format::InternalPair;
+use super::index::Index;
+use super::storage::PersistedFile;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::Path;
 
@@ -14,7 +14,7 @@ pub struct SSTable {
 }
 
 impl SSTable {
-    /// Create a new instance of `Table`.  
+    /// Create a new instance of `Table`.
     pub fn new(
         file: PersistedFile,
         pairs: Vec<InternalPair>,
@@ -104,10 +104,12 @@ mod tests {
             InternalPair::new("abc", None),
             InternalPair::new("日本語💖", Some("ржавчина")),
         ];
-        let expected = InternalPair::serialize_flatten(&pairs);
-        let file = PersistedFile::new(path, &expected.clone())?;
-        let _table = SSTable::new(file, pairs, 1)?;
-        assert_eq!(expected, read_file_to_buffer(path));
+        let file = PersistedFile::new(path, &pairs)?;
+        let _table = SSTable::new(file, pairs.clone(), 1)?;
+        assert_eq!(
+            InternalPair::serialize_flatten(&pairs),
+            read_file_to_buffer(path)
+        );
         Ok(())
     }
 
@@ -132,8 +134,7 @@ mod tests {
             InternalPair::new("abc14", None),
             InternalPair::new("abc15", None),
         ];
-        let bytes = InternalPair::serialize_flatten(&pairs);
-        let file = PersistedFile::new(path, &bytes)?;
+        let file = PersistedFile::new(path, &pairs)?;
         let mut table = SSTable::new(file, pairs, 3)?;
         assert_eq!(
             InternalPair::new("abc04", Some("defg")),
@@ -156,8 +157,7 @@ mod tests {
             InternalPair::new("abc01", Some("defg")),
             InternalPair::new("abc02", None),
         ];
-        let bytes = InternalPair::serialize_flatten(&pairs);
-        let file = PersistedFile::new(path, &bytes)?;
+        let file = PersistedFile::new(path, &pairs)?;
         let table = SSTable::new(file, pairs, 3)?;
         let mut table_iter = table.into_iter();
         assert_eq!(

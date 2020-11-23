@@ -1,6 +1,6 @@
-use crate::sstable::format::InternalPair;
-use crate::sstable::storage::PersistedFile;
-use crate::sstable::table::{SSTable, SSTableIterator};
+use super::format::InternalPair;
+use super::storage::PersistedFile;
+use super::table::{SSTable, SSTableIterator};
 use std::cmp::Reverse;
 use std::collections::VecDeque;
 use std::fs;
@@ -16,6 +16,7 @@ pub struct SSTableManager {
     /// Files in the directory is sorted by thier name(like table_0, table_1, table_2...).
     /// File with bigger number at the end of the file name is newer one.
     table_directory: PathBuf,
+    /// Every `block_stride` pair, `SSTable` creates an index entry.
     block_stride: usize,
     /// Array of SSTables this struct manages.
     /// Front element is the newer.
@@ -46,20 +47,20 @@ impl SSTableManager {
     /// Create a new SSTable with given pairs.
     pub fn create(&mut self, pairs: Vec<InternalPair>) -> io::Result<()> {
         let table_path = self.new_table_path();
-        let bytes: Vec<u8> = InternalPair::serialize_flatten(&pairs);
-        let file = PersistedFile::new(table_path, &bytes).unwrap();
+        let file = PersistedFile::new(table_path, &pairs).unwrap();
         let table = SSTable::new(file, pairs, 3).unwrap();
         self.tables.push_front(table);
         Ok(())
     }
 
+    /// Generate a path name for a new SSTable.
     fn new_table_path(&self) -> PathBuf {
         let mut table_path = self.table_directory.clone();
         table_path.push(format!("table_{}", self.tables.len()));
         table_path
     }
 
-    /// Get a pair by given key among SSTables.
+    /// Get a pair by given key from SSTables.
     pub fn get(&mut self, key: &[u8]) -> io::Result<Option<InternalPair>> {
         for table in self.tables.iter_mut() {
             let pair = table.get(key)?;
@@ -81,8 +82,7 @@ impl SSTableManager {
         let pairs = Self::compact_inner(num_tables, table_iterators);
 
         let table_path = self.new_table_path();
-        let bytes: Vec<u8> = pairs.iter().flat_map(|pair| pair.serialize()).collect();
-        let file = PersistedFile::new(table_path, &bytes).unwrap();
+        let file = PersistedFile::new(table_path, &pairs).unwrap();
         let merged_table = SSTable::new(file, pairs, self.block_stride)?;
         self.tables.push_front(merged_table);
         Ok(())

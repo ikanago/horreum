@@ -1,4 +1,4 @@
-use crate::sstable::format::InternalPair;
+use super::format::InternalPair;
 /// Block is a group of keys.
 /// This has a first key of the block, position at a disk and length of the block.
 #[derive(Debug, Eq, PartialEq)]
@@ -25,19 +25,20 @@ impl Block {
     }
 }
 
-/// Entries in SSTable's index.
-/// This sturct holds array of `Block`.
-/// `Block` is a group of key-value pairs.
+/// Entries in SSTable's index.  
+/// Holds array of `Block` which is a group of key-value pairs.  
+/// Divide all pairs into `Block`s and every `Block` occupies at most `block_stride` pairs.
 ///
+/// Example inner structure:
 /// ```text
 /// +===========+
 /// |   Index   |     In a Disk
 /// +===========+    +-----------------------------------------------------+
-/// |  abc: 0   | -> | abc: aaa | abx: hoge | ascii: nyan | ... | dau: xxx | 1st Block(0 ~ 122 byte)
+/// |  abc: 0   | -> | abc: aaa | abx: hoge | ascii: nyan | ... | dau: xxx | 1st Block(0 ~ 122 byte, 15 pairs)
 /// +-----------+    +-----------------------------------------------------+
-/// | data: 123 | -> | data: xxx | dd: hoge | euclid: fuga | ... | gg: hey | 2nd Block(123 = 269 byte)
+/// | data: 123 | -> | data: xxx | dd: hoge | euclid: fuga | ... | gg: hey | 2nd Block(123 = 269 byte, 15 pairs)
 /// +-----------+    +-----------------------------------------------------+
-/// | ghij: 270 | -> | ghij: fuxk | gcc: x | rust: pretty | ... | zzz: yes | 3rd Block(270 ~ 500 byte)
+/// | ghij: 270 | -> | ghij: fuxk | gcc: x | rust: pretty | ... | zzz: yes | 3rd Block(270 ~ 500 byte, 15 pairs)
 /// +-----------+    +-----------------------------------------------------+
 /// ```
 #[derive(Debug)]
@@ -48,7 +49,6 @@ pub struct Index {
 impl Index {
     /// Create index for key-value pairs stored in a disk.  
     /// Assume `pairs` is sorted.  
-    /// Insert into an index every `block_stride` pair.
     pub fn new(pairs: Vec<InternalPair>, block_stride: usize) -> Self {
         let mut items = Vec::new();
         let mut read_data = Vec::new();
@@ -78,7 +78,6 @@ impl Index {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sstable::format::InternalPair;
 
     #[test]
     fn index_creation() {
