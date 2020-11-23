@@ -1,5 +1,5 @@
 use crate::sstable::format::InternalPair;
-use crate::sstable::index::{Block, Index};
+use crate::sstable::index::Index;
 use crate::sstable::storage::PersistedFile;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::Path;
@@ -15,24 +15,12 @@ pub struct SSTable {
 
 impl SSTable {
     /// Create a new instance of `Table`.  
-    /// Assume `pairs` is sorted.  
-    /// Insert into an index every `block_stride` pair.
     pub fn new(
         file: PersistedFile,
         pairs: Vec<InternalPair>,
         block_stride: usize,
     ) -> io::Result<Self> {
-        let mut index = Index::new();
-        let mut read_data = Vec::new();
-
-        for pair_chunk in pairs.chunks(block_stride) {
-            let mut block = Block::new(&pair_chunk[0].key, read_data.len(), 0);
-            let mut block_data = InternalPair::serialize_flatten(pair_chunk);
-            block.set_length(block_data.len());
-            index.push(block);
-            read_data.append(&mut block_data);
-        }
-
+        let index = Index::new(pairs, block_stride);
         Ok(Self { file, index })
     }
 
@@ -42,16 +30,7 @@ impl SSTable {
         file.read_to_end(&mut data)?;
         // Handle this Result
         let pairs = InternalPair::deserialize_from_bytes(&mut data).unwrap();
-        let mut index = Index::new();
-        let mut read_data = Vec::new();
-
-        for pair_chunk in pairs.chunks(block_stride) {
-            let mut block = Block::new(&pair_chunk[0].key, read_data.len(), 0);
-            let mut block_data = InternalPair::serialize_flatten(pair_chunk);
-            block.set_length(block_data.len());
-            index.push(block);
-            read_data.append(&mut block_data);
-        }
+        let index = Index::new(pairs, block_stride);
 
         Ok(Self { file, index })
     }
