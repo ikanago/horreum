@@ -3,8 +3,11 @@ use crate::sstable::format::InternalPair;
 /// This has a first key of the block, position at a disk and length of the block.
 #[derive(Debug, Eq, PartialEq)]
 pub struct Block {
+    /// First key of the block.
     key: Vec<u8>,
+    /// Block's position at a disk.
     position: usize,
+    /// Length of the block.
     length: usize,
 }
 

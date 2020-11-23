@@ -121,10 +121,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn get_pairs() {
+    fn get_pairs() -> io::Result<()> {
         let path = "test_get_create";
         let _ = std::fs::create_dir(path);
-        let mut manager = SSTableManager::new(path, 2).unwrap();
+        let mut manager = SSTableManager::new(path, 2)?;
         let pairs1 = vec![
             InternalPair::new("abc00", Some("def")),
             InternalPair::new("abc01", Some("defg")),
@@ -134,9 +134,9 @@ mod tests {
             InternalPair::new("abc01", None),
         ];
         let pairs3 = vec![InternalPair::new("abc02", Some("def"))];
-        manager.create(pairs1).unwrap();
-        manager.create(pairs2).unwrap();
-        manager.create(pairs3).unwrap();
+        manager.create(pairs1)?;
+        manager.create(pairs2)?;
+        manager.create(pairs3)?;
         assert_eq!(
             InternalPair::new("abc00", Some("xyz")),
             manager.get("abc00".as_bytes()).unwrap().unwrap()
@@ -149,6 +149,7 @@ mod tests {
             InternalPair::new("abc02", Some("def")),
             manager.get("abc02".as_bytes()).unwrap().unwrap()
         );
+        Ok(())
     }
 
     #[test]
