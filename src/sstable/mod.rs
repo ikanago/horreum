@@ -2,7 +2,7 @@ pub mod format;
 mod index;
 pub mod manager;
 mod storage;
-pub mod table;
+mod table;
 
 #[cfg(test)]
 pub(crate) mod tests {
