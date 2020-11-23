@@ -1,15 +1,22 @@
-use crate::sstable::format::InternalPair;
-use crate::sstable::storage::PersistedFile;
-use crate::sstable::table::{SSTable, SSTableIterator};
+use super::format::InternalPair;
+use super::storage::PersistedFile;
+use super::table::{SSTable, SSTableIterator};
+use std::cmp::Reverse;
 use std::collections::VecDeque;
+use std::fs;
 use std::io;
 use std::mem;
 use std::path::{Path, PathBuf};
 
+/// Manage multiple SSTable instances.
+/// All operation to an SSTalbe is taken via this struct.
 #[derive(Debug)]
 pub struct SSTableManager {
     /// Directory to store SSTable's files.
+    /// Files in the directory is sorted by thier name(like table_0, table_1, table_2...).
+    /// File with bigger number at the end of the file name is newer one.
     table_directory: PathBuf,
+    /// Every `block_stride` pair, `SSTable` creates an index entry.
     block_stride: usize,
     /// Array of SSTables this struct manages.
     /// Front element is the newer.
@@ -20,30 +27,40 @@ impl SSTableManager {
     pub fn new<P: AsRef<Path>>(directory: P, block_stride: usize) -> io::Result<Self> {
         let mut table_directory = PathBuf::new();
         table_directory.push(directory);
+
+        let mut paths: Vec<_> = fs::read_dir(&table_directory)?
+            .into_iter()
+            .filter_map(|path| path.ok())
+            .collect();
+        paths.sort_by_key(|path| Reverse(path.path()));
+        let tables = paths
+            .iter()
+            .filter_map(|path| SSTable::open(path.path(), block_stride).ok())
+            .collect();
         Ok(Self {
             table_directory,
             block_stride,
-            tables: VecDeque::new(),
+            tables,
         })
     }
 
     /// Create a new SSTable with given pairs.
     pub fn create(&mut self, pairs: Vec<InternalPair>) -> io::Result<()> {
         let table_path = self.new_table_path();
-        let bytes: Vec<u8> = InternalPair::serialize_flatten(&pairs);
-        let file = PersistedFile::new(table_path, &bytes).unwrap();
+        let file = PersistedFile::new(table_path, &pairs).unwrap();
         let table = SSTable::new(file, pairs, 3).unwrap();
         self.tables.push_front(table);
         Ok(())
     }
 
+    /// Generate a path name for a new SSTable.
     fn new_table_path(&self) -> PathBuf {
         let mut table_path = self.table_directory.clone();
-        table_path.push(format!("table{}", self.tables.len()));
+        table_path.push(format!("table_{}", self.tables.len()));
         table_path
     }
 
-    /// Get a pair by given key among SSTables.
+    /// Get a pair by given key from SSTables.
     pub fn get(&mut self, key: &[u8]) -> io::Result<Option<InternalPair>> {
         for table in self.tables.iter_mut() {
             let pair = table.get(key)?;
@@ -62,11 +79,10 @@ impl SSTableManager {
             .into_iter()
             .map(|table| table.into_iter())
             .collect::<Vec<SSTableIterator>>();
-        let pairs = Self::compact_inner(num_tables, table_iterators)?;
+        let pairs = Self::compact_inner(num_tables, table_iterators);
 
         let table_path = self.new_table_path();
-        let bytes: Vec<u8> = pairs.iter().flat_map(|pair| pair.serialize()).collect();
-        let file = PersistedFile::new(table_path, &bytes).unwrap();
+        let file = PersistedFile::new(table_path, &pairs).unwrap();
         let merged_table = SSTable::new(file, pairs, self.block_stride)?;
         self.tables.push_front(merged_table);
         Ok(())
@@ -80,7 +96,7 @@ impl SSTableManager {
         // `num_tables` is given explicitly.
         num_tables: usize,
         mut table_iterators: Vec<impl Iterator<Item = InternalPair>>,
-    ) -> io::Result<Vec<InternalPair>> {
+    ) -> Vec<InternalPair> {
         // Array of current first elements for each SSTable.
         let mut merge_candidates = (0..num_tables)
             .map(|i| table_iterators[i].next())
@@ -112,19 +128,19 @@ impl SSTableManager {
                 break;
             }
         }
-        Ok(pairs)
+        pairs
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sstable::tests::*;
 
     #[test]
-    fn get_pairs() {
-        let path = "test_get_create";
+    fn open_existing_files() -> io::Result<()> {
+        let path = "test_open_existing_files";
         let _ = std::fs::create_dir(path);
-        let mut manager = SSTableManager::new(path, 2).unwrap();
         let pairs1 = vec![
             InternalPair::new("abc00", Some("def")),
             InternalPair::new("abc01", Some("defg")),
@@ -134,21 +150,59 @@ mod tests {
             InternalPair::new("abc01", None),
         ];
         let pairs3 = vec![InternalPair::new("abc02", Some("def"))];
-        manager.create(pairs1).unwrap();
-        manager.create(pairs2).unwrap();
-        manager.create(pairs3).unwrap();
+        let data1 = InternalPair::serialize_flatten(&pairs1);
+        let data2 = InternalPair::serialize_flatten(&pairs2);
+        let data3 = InternalPair::serialize_flatten(&pairs3);
+        prepare_sstable_file("test_open_existing_files/table_0", &data1)?;
+        prepare_sstable_file("test_open_existing_files/table_1", &data2)?;
+        prepare_sstable_file("test_open_existing_files/table_2", &data3)?;
+
+        let mut manager = SSTableManager::new(path, 3)?;
         assert_eq!(
             InternalPair::new("abc00", Some("xyz")),
-            manager.get("abc00".as_bytes()).unwrap().unwrap()
+            manager.get("abc00".as_bytes())?.unwrap()
         );
         assert_eq!(
             InternalPair::new("abc01", None),
-            manager.get("abc01".as_bytes()).unwrap().unwrap()
+            manager.get("abc01".as_bytes())?.unwrap()
         );
         assert_eq!(
             InternalPair::new("abc02", Some("def")),
-            manager.get("abc02".as_bytes()).unwrap().unwrap()
+            manager.get("abc02".as_bytes())?.unwrap()
         );
+        Ok(())
+    }
+
+    #[test]
+    fn get_pairs() -> io::Result<()> {
+        let path = "test_get_create";
+        let _ = std::fs::create_dir(path);
+        let mut manager = SSTableManager::new(path, 2)?;
+        let pairs1 = vec![
+            InternalPair::new("abc00", Some("def")),
+            InternalPair::new("abc01", Some("defg")),
+        ];
+        let pairs2 = vec![
+            InternalPair::new("abc00", Some("xyz")),
+            InternalPair::new("abc01", None),
+        ];
+        let pairs3 = vec![InternalPair::new("abc02", Some("def"))];
+        manager.create(pairs1)?;
+        manager.create(pairs2)?;
+        manager.create(pairs3)?;
+        assert_eq!(
+            InternalPair::new("abc00", Some("xyz")),
+            manager.get("abc00".as_bytes())?.unwrap()
+        );
+        assert_eq!(
+            InternalPair::new("abc01", None),
+            manager.get("abc01".as_bytes())?.unwrap()
+        );
+        assert_eq!(
+            InternalPair::new("abc02", Some("def")),
+            manager.get("abc02".as_bytes())?.unwrap()
+        );
+        Ok(())
     }
 
     #[test]
@@ -181,7 +235,7 @@ mod tests {
         let table_iterators = tables.into_iter().map(|table| table.into_iter()).collect();
         assert_eq!(
             expected,
-            SSTableManager::compact_inner(num_table, table_iterators).unwrap()
+            SSTableManager::compact_inner(num_table, table_iterators)
         );
     }
 }

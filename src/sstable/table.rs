@@ -1,7 +1,8 @@
-use crate::sstable::format::InternalPair;
-use crate::sstable::index::{Block, Index};
-use crate::sstable::storage::PersistedFile;
-use std::io::{self, Seek, SeekFrom};
+use super::format::InternalPair;
+use super::index::Index;
+use super::storage::PersistedFile;
+use std::io::{self, Read, Seek, SeekFrom};
+use std::path::Path;
 
 /// Represents a SSTable.
 #[derive(Debug)]
@@ -13,24 +14,23 @@ pub struct SSTable {
 }
 
 impl SSTable {
-    /// Create a new instance of `Table`.  
-    /// Assume `pairs` is sorted.  
-    /// Insert into an index every `block_stride` pair.
+    /// Create a new instance of `Table`.
     pub fn new(
         file: PersistedFile,
         pairs: Vec<InternalPair>,
         block_stride: usize,
     ) -> io::Result<Self> {
-        let mut index = Index::new();
-        let mut read_data = Vec::new();
+        let index = Index::new(pairs, block_stride);
+        Ok(Self { file, index })
+    }
 
-        for pair_chunk in pairs.chunks(block_stride) {
-            let mut block = Block::new(&pair_chunk[0].key, read_data.len(), 0);
-            let mut block_data: Vec<u8> = InternalPair::serialize_flatten(pair_chunk);
-            block.set_length(block_data.len());
-            index.push(block);
-            read_data.append(&mut block_data);
-        }
+    pub fn open<P: AsRef<Path>>(path: P, block_stride: usize) -> io::Result<Self> {
+        let mut file = PersistedFile::open(path)?;
+        let mut data = Vec::new();
+        file.read_to_end(&mut data)?;
+        // Handle this Result
+        let pairs = InternalPair::deserialize_from_bytes(&mut data).unwrap();
+        let index = Index::new(pairs, block_stride);
 
         Ok(Self { file, index })
     }
@@ -86,10 +86,7 @@ impl Iterator for SSTableIterator {
                     None
                 }
             }
-            Err(e) => {
-                dbg!(e);
-                None
-            }
+            Err(_) => None,
         }
     }
 }
@@ -100,21 +97,24 @@ mod tests {
     use crate::sstable::tests::*;
 
     #[test]
-    fn create_table() {
+    fn create_table() -> io::Result<()> {
         let path = "test_create_table";
         let pairs = vec![
             InternalPair::new("abc", Some("defg")),
             InternalPair::new("abc", None),
             InternalPair::new("日本語💖", Some("ржавчина")),
         ];
-        let expected: Vec<u8> = InternalPair::serialize_flatten(&pairs);
-        let file = PersistedFile::new(path, &expected.clone()).unwrap();
-        let _table = SSTable::new(file, pairs, 1).unwrap();
-        assert_eq!(expected, read_file_to_buffer(path));
+        let file = PersistedFile::new(path, &pairs)?;
+        let _table = SSTable::new(file, pairs.clone(), 1)?;
+        assert_eq!(
+            InternalPair::serialize_flatten(&pairs),
+            read_file_to_buffer(path)
+        );
+        Ok(())
     }
 
     #[test]
-    fn search_table() {
+    fn search_table() -> io::Result<()> {
         let path = "test_search_table";
         let pairs = vec![
             InternalPair::new("abc00", Some("def")),
@@ -134,9 +134,8 @@ mod tests {
             InternalPair::new("abc14", None),
             InternalPair::new("abc15", None),
         ];
-        let bytes: Vec<u8> = InternalPair::serialize_flatten(&pairs);
-        let file = PersistedFile::new(path, &bytes).unwrap();
-        let mut table = SSTable::new(file, pairs, 3).unwrap();
+        let file = PersistedFile::new(path, &pairs)?;
+        let mut table = SSTable::new(file, pairs, 3)?;
         assert_eq!(
             InternalPair::new("abc04", Some("defg")),
             table.get("abc04".as_bytes()).unwrap().unwrap()
@@ -147,19 +146,19 @@ mod tests {
         );
         assert_eq!(None, table.get("abc011".as_bytes()).unwrap());
         assert_eq!(None, table.get("abc16".as_bytes()).unwrap());
+        Ok(())
     }
 
     #[test]
-    fn iterate_table() {
+    fn iterate_table() -> io::Result<()> {
         let path = "test_iterate_table";
         let pairs = vec![
             InternalPair::new("abc00", Some("def")),
             InternalPair::new("abc01", Some("defg")),
             InternalPair::new("abc02", None),
         ];
-        let bytes: Vec<u8> = InternalPair::serialize_flatten(&pairs);
-        let file = PersistedFile::new(path, &bytes).unwrap();
-        let table = SSTable::new(file, pairs, 3).unwrap();
+        let file = PersistedFile::new(path, &pairs)?;
+        let table = SSTable::new(file, pairs, 3)?;
         let mut table_iter = table.into_iter();
         assert_eq!(
             Some(InternalPair::new("abc00", Some("def"))),
@@ -171,5 +170,23 @@ mod tests {
         );
         assert_eq!(Some(InternalPair::new("abc02", None)), table_iter.next());
         assert_eq!(None, table_iter.next());
+        Ok(())
+    }
+
+    #[test]
+    fn open_existing_file() -> io::Result<()> {
+        let path = "test_open_existing_file";
+        let pairs = vec![
+            InternalPair::new("abc00", Some("def")),
+            InternalPair::new("abc01", Some("defg")),
+            InternalPair::new("abc02", None),
+        ];
+        let data = InternalPair::serialize_flatten(&pairs);
+        prepare_sstable_file(path, &data)?;
+
+        let table = SSTable::open(path, 3)?;
+        let opened_pairs: Vec<InternalPair> = table.into_iter().collect();
+        assert_eq!(pairs, opened_pairs);
+        Ok(())
     }
 }
