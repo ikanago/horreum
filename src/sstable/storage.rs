@@ -27,6 +27,16 @@ impl PersistedFile {
         })
     }
 
+    pub fn open<P: AsRef<Path>>(path: P) -> io::Result<Self> {
+        let mut path_buf = PathBuf::new();
+        path_buf.push(path);
+        let file = File::open(&path_buf.as_path())?;
+        Ok(Self {
+            path: path_buf,
+            buffer: BufReader::new(file),
+        })
+    }
+
     pub fn read_at(&mut self, positioin: usize, length: usize) -> io::Result<Vec<u8>> {
         self.buffer.seek(SeekFrom::Start(positioin as u64))?;
         let mut bytes = vec![0; length];

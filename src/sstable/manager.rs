@@ -39,7 +39,7 @@ impl SSTableManager {
 
     fn new_table_path(&self) -> PathBuf {
         let mut table_path = self.table_directory.clone();
-        table_path.push(format!("table{}", self.tables.len()));
+        table_path.push(format!("table_{}", self.tables.len()));
         table_path
     }
 
