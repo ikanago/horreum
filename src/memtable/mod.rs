@@ -23,6 +23,11 @@ impl MemTable {
         let map = self.inner.read().await;
         map.get(key).cloned()
     }
+
+    pub async fn delete(&mut self, key: &Bytes) {
+        let mut map = self.inner.write().await;
+        map.remove(key);
+    }
 }
 
 #[cfg(test)]
@@ -35,12 +40,28 @@ mod tests {
         table.put(Bytes::from("abc"), Bytes::from("def")).await;
         table.put(Bytes::from("xyz"), Bytes::from("xxx")).await;
         assert_eq!(
-            Bytes::from("def"),
-            table.get(&Bytes::from("abc")).await.unwrap()
+            Some(Bytes::from("def")),
+            table.get(&Bytes::from("abc")).await
         );
         assert_eq!(
-            Bytes::from("xxx"),
-            table.get(&Bytes::from("xyz")).await.unwrap()
+            Some(Bytes::from("xxx")),
+            table.get(&Bytes::from("xyz")).await
+        );
+    }
+
+    #[tokio::test]
+    async fn delete() {
+        let mut table = MemTable::new();
+        table.put(Bytes::from("abc"), Bytes::from("def")).await;
+        table.put(Bytes::from("xyz"), Bytes::from("xxx")).await;
+        table.delete(&Bytes::from("abc")).await;
+        assert_eq!(
+            None,
+            table.get(&Bytes::from("abc")).await
+        );
+        assert_eq!(
+            Some(Bytes::from("xxx")),
+            table.get(&Bytes::from("xyz")).await
         );
     }
 }
