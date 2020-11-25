@@ -1,7 +1,8 @@
+mod format;
 pub mod http;
 pub mod index;
-pub mod memtable;
-pub mod sstable;
+mod memtable;
+mod sstable;
 
 pub use http::serve;
 pub use index::Index;

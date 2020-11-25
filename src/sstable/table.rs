@@ -1,4 +1,4 @@
-use super::format::InternalPair;
+use crate::format::InternalPair;
 use super::index::Index;
 use super::storage::PersistedFile;
 use std::io::{self, Read, Seek, SeekFrom};

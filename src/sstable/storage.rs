@@ -1,8 +1,7 @@
+use crate::format::InternalPair;
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-
-use super::format::InternalPair;
 
 /// Represents manipulating an SSTable file.
 #[derive(Debug)]
