@@ -1,4 +1,5 @@
-use super::format::InternalPair;
+use crate::format::InternalPair;
+
 /// Block is a group of keys.
 /// This has a first key of the block, position at a disk and length of the block.
 #[derive(Debug, Eq, PartialEq)]

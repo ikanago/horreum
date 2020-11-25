@@ -1,6 +1,6 @@
-use super::format::InternalPair;
 use super::storage::PersistedFile;
 use super::table::{SSTable, SSTableIterator};
+use crate::format::InternalPair;
 use std::cmp::Reverse;
 use std::collections::VecDeque;
 use std::fs;
