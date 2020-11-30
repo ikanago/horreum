@@ -63,8 +63,8 @@ mod tests {
     #[test]
     fn read() -> io::Result<()> {
         let pairs = vec![
-            InternalPair::new("abc00", Some("def")),
-            InternalPair::new("abc01", None),
+            InternalPair::new(b"abc00", Some(b"def")),
+            InternalPair::new(b"abc01", None),
         ];
         let mut file = PersistedFile::new("test_read", &pairs).unwrap();
         let mut buffer = Vec::new();

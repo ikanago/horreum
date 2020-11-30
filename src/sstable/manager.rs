@@ -142,14 +142,14 @@ mod tests {
         let path = "test_open_existing_files";
         let _ = std::fs::create_dir(path);
         let pairs1 = vec![
-            InternalPair::new("abc00", Some("def")),
-            InternalPair::new("abc01", Some("defg")),
+            InternalPair::new(b"abc00", Some(b"def")),
+            InternalPair::new(b"abc01", Some(b"defg")),
         ];
         let pairs2 = vec![
-            InternalPair::new("abc00", Some("xyz")),
-            InternalPair::new("abc01", None),
+            InternalPair::new(b"abc00", Some(b"xyz")),
+            InternalPair::new(b"abc01", None),
         ];
-        let pairs3 = vec![InternalPair::new("abc02", Some("def"))];
+        let pairs3 = vec![InternalPair::new(b"abc02", Some(b"def"))];
         let data1 = InternalPair::serialize_flatten(&pairs1);
         let data2 = InternalPair::serialize_flatten(&pairs2);
         let data3 = InternalPair::serialize_flatten(&pairs3);
@@ -159,16 +159,16 @@ mod tests {
 
         let mut manager = SSTableManager::new(path, 3)?;
         assert_eq!(
-            InternalPair::new("abc00", Some("xyz")),
-            manager.get("abc00".as_bytes())?.unwrap()
+            InternalPair::new(b"abc00", Some(b"xyz")),
+            manager.get(b"abc00")?.unwrap()
         );
         assert_eq!(
-            InternalPair::new("abc01", None),
-            manager.get("abc01".as_bytes())?.unwrap()
+            InternalPair::new(b"abc01", None),
+            manager.get(b"abc01")?.unwrap()
         );
         assert_eq!(
-            InternalPair::new("abc02", Some("def")),
-            manager.get("abc02".as_bytes())?.unwrap()
+            InternalPair::new(b"abc02", Some(b"def")),
+            manager.get(b"abc02")?.unwrap()
         );
         Ok(())
     }
@@ -179,28 +179,28 @@ mod tests {
         let _ = std::fs::create_dir(path);
         let mut manager = SSTableManager::new(path, 2)?;
         let pairs1 = vec![
-            InternalPair::new("abc00", Some("def")),
-            InternalPair::new("abc01", Some("defg")),
+            InternalPair::new(b"abc00", Some(b"def")),
+            InternalPair::new(b"abc01", Some(b"defg")),
         ];
         let pairs2 = vec![
-            InternalPair::new("abc00", Some("xyz")),
-            InternalPair::new("abc01", None),
+            InternalPair::new(b"abc00", Some(b"xyz")),
+            InternalPair::new(b"abc01", None),
         ];
-        let pairs3 = vec![InternalPair::new("abc02", Some("def"))];
+        let pairs3 = vec![InternalPair::new(b"abc02", Some(b"def"))];
         manager.create(pairs1)?;
         manager.create(pairs2)?;
         manager.create(pairs3)?;
         assert_eq!(
-            InternalPair::new("abc00", Some("xyz")),
-            manager.get("abc00".as_bytes())?.unwrap()
+            InternalPair::new(b"abc00", Some(b"xyz")),
+            manager.get(b"abc00")?.unwrap()
         );
         assert_eq!(
-            InternalPair::new("abc01", None),
-            manager.get("abc01".as_bytes())?.unwrap()
+            InternalPair::new(b"abc01", None),
+            manager.get(b"abc01")?.unwrap()
         );
         assert_eq!(
-            InternalPair::new("abc02", Some("def")),
-            manager.get("abc02".as_bytes())?.unwrap()
+            InternalPair::new(b"abc02", Some(b"def")),
+            manager.get(b"abc02")?.unwrap()
         );
         Ok(())
     }
@@ -208,27 +208,27 @@ mod tests {
     #[test]
     fn compaction() {
         let table1 = vec![
-            InternalPair::new("abc00", Some("def")),
-            InternalPair::new("abc01", Some("defg")),
-            InternalPair::new("abc02", Some("xyz")),
-            InternalPair::new("abc03", Some("defg")),
+            InternalPair::new(b"abc00", Some(b"def")),
+            InternalPair::new(b"abc01", Some(b"defg")),
+            InternalPair::new(b"abc02", Some(b"xyz")),
+            InternalPair::new(b"abc03", Some(b"defg")),
         ];
         let table2 = vec![
-            InternalPair::new("abc00", Some("xyz")),
-            InternalPair::new("abc01", None),
+            InternalPair::new(b"abc00", Some(b"xyz")),
+            InternalPair::new(b"abc01", None),
         ];
         let table3 = vec![
-            InternalPair::new("abc02", Some("def")),
-            InternalPair::new("abc04", Some("hoge")),
-            InternalPair::new("abc05", None),
+            InternalPair::new(b"abc02", Some(b"def")),
+            InternalPair::new(b"abc04", Some(b"hoge")),
+            InternalPair::new(b"abc05", None),
         ];
         let expected = vec![
-            InternalPair::new("abc00", Some("xyz")),
-            InternalPair::new("abc01", None),
-            InternalPair::new("abc02", Some("def")),
-            InternalPair::new("abc03", Some("defg")),
-            InternalPair::new("abc04", Some("hoge")),
-            InternalPair::new("abc05", None),
+            InternalPair::new(b"abc00", Some(b"xyz")),
+            InternalPair::new(b"abc01", None),
+            InternalPair::new(b"abc02", Some(b"def")),
+            InternalPair::new(b"abc03", Some(b"defg")),
+            InternalPair::new(b"abc04", Some(b"hoge")),
+            InternalPair::new(b"abc05", None),
         ];
         let tables = vec![table3, table2, table1];
         let num_table = tables.len();
