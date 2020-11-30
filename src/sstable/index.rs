@@ -83,22 +83,22 @@ mod tests {
     #[test]
     fn index_creation() {
         let pairs = vec![
-            InternalPair::new("abc00", Some("def")),
-            InternalPair::new("abc01", Some("defg")),
-            InternalPair::new("abc02", Some("de")),
-            InternalPair::new("abc03", Some("defgh")),
-            InternalPair::new("abc04", Some("defg")),
-            InternalPair::new("abc05", Some("defghij")),
-            InternalPair::new("abc06", Some("def")),
-            InternalPair::new("abc07", Some("defgh")),
-            InternalPair::new("abc08", None),
-            InternalPair::new("abc09", None),
-            InternalPair::new("abc10", None),
-            InternalPair::new("abc11", None),
-            InternalPair::new("abc12", None),
-            InternalPair::new("abc13", None),
-            InternalPair::new("abc14", None),
-            InternalPair::new("abc15", None),
+            InternalPair::new(b"abc00", Some(b"def")),
+            InternalPair::new(b"abc01", Some(b"defg")),
+            InternalPair::new(b"abc02", Some(b"de")),
+            InternalPair::new(b"abc03", Some(b"defgh")),
+            InternalPair::new(b"abc04", Some(b"defg")),
+            InternalPair::new(b"abc05", Some(b"defghij")),
+            InternalPair::new(b"abc06", Some(b"def")),
+            InternalPair::new(b"abc07", Some(b"defgh")),
+            InternalPair::new(b"abc08", None),
+            InternalPair::new(b"abc09", None),
+            InternalPair::new(b"abc10", None),
+            InternalPair::new(b"abc11", None),
+            InternalPair::new(b"abc12", None),
+            InternalPair::new(b"abc13", None),
+            InternalPair::new(b"abc14", None),
+            InternalPair::new(b"abc15", None),
         ];
         let index = Index::new(pairs, 3);
         assert_eq!(
@@ -117,27 +117,27 @@ mod tests {
     #[test]
     fn index_get() {
         let pairs = vec![
-            InternalPair::new("abc00", Some("def")),
-            InternalPair::new("abc01", Some("defg")),
-            InternalPair::new("abc02", Some("de")),
-            InternalPair::new("abc03", Some("defgh")),
-            InternalPair::new("abc04", Some("defg")),
-            InternalPair::new("abc05", Some("defghij")),
-            InternalPair::new("abc06", Some("def")),
-            InternalPair::new("abc07", Some("defgh")),
-            InternalPair::new("abc08", None),
-            InternalPair::new("abc09", None),
-            InternalPair::new("abc10", None),
-            InternalPair::new("abc11", None),
-            InternalPair::new("abc12", None),
-            InternalPair::new("abc13", None),
-            InternalPair::new("abc14", None),
-            InternalPair::new("abc15", None),
+            InternalPair::new(b"abc00", Some(b"def")),
+            InternalPair::new(b"abc01", Some(b"defg")),
+            InternalPair::new(b"abc02", Some(b"de")),
+            InternalPair::new(b"abc03", Some(b"defgh")),
+            InternalPair::new(b"abc04", Some(b"defg")),
+            InternalPair::new(b"abc05", Some(b"defghij")),
+            InternalPair::new(b"abc06", Some(b"def")),
+            InternalPair::new(b"abc07", Some(b"defgh")),
+            InternalPair::new(b"abc08", None),
+            InternalPair::new(b"abc09", None),
+            InternalPair::new(b"abc10", None),
+            InternalPair::new(b"abc11", None),
+            InternalPair::new(b"abc12", None),
+            InternalPair::new(b"abc13", None),
+            InternalPair::new(b"abc14", None),
+            InternalPair::new(b"abc15", None),
         ];
         let index = Index::new(pairs, 3);
-        assert_eq!(None, index.get("a".as_bytes()));
-        assert_eq!(Some((0, 72)), index.get("abc01".as_bytes()));
-        assert_eq!(Some((72, 79)), index.get("abc03".as_bytes()));
-        assert_eq!(Some((348, 21)), index.get("abc15".as_bytes()));
+        assert_eq!(None, index.get(b"a"));
+        assert_eq!(Some((0, 72)), index.get(b"abc01"));
+        assert_eq!(Some((72, 79)), index.get(b"abc03"));
+        assert_eq!(Some((348, 21)), index.get(b"abc15"));
     }
 }

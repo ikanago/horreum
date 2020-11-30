@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 use tokio::sync::RwLock;
 
+use crate::format::InternalPair;
+
 /// `MemTable` is an in-memory key-value store.  
 /// Imbound data is accumulated in `BTreeMap` this struct holds.
 /// `MemTable` records deletion histories because `SSTable` needs them.
@@ -39,11 +41,18 @@ impl MemTable {
         map.get(key).cloned()
     }
 
-    /// Delete value corresponding to a given key.
+    /// Mark value corresponding to a key as deleted.
     pub async fn delete(&mut self, key: &[u8]) {
         let mut map = self.inner.write().await;
         map.insert(key.to_vec(), Entry::Deleted);
     }
+
+    //pub async fn flush(&self) -> Vec<InternalPair> {
+    //    let map = self.inner.read().await;
+    //    map.iter().map(|(key, entry)| match entry {
+    //        Value(value) => InternalPair::new(key, value)
+    //    })
+    //}
 }
 
 #[cfg(test)]
@@ -86,4 +95,30 @@ mod tests {
             table.get("xyz".as_bytes()).await
         );
     }
+
+    //#[tokio::test]
+    //async fn flush() {
+    //    let mut table = MemTable::new();
+    //    table
+    //        .put("abc".as_bytes().to_vec(), "def".as_bytes().to_vec())
+    //        .await;
+    //    table
+    //        .put("rust".as_bytes().to_vec(), "nice".as_bytes().to_vec())
+    //        .await;
+    //    table
+    //        .put("cat".as_bytes().to_vec(), "hoge".as_bytes().to_vec())
+    //        .await;
+    //    table
+    //        .put("xyz".as_bytes().to_vec(), "xxx".as_bytes().to_vec())
+    //        .await;
+    //    table.delete("cat".as_bytes()).await;
+    //    assert_eq!(
+    //        vec![
+    //            InternalPair::new("abc", Some("def")),
+    //            InternalPair::new("rust", Some("nice")),
+    //            InternalPair::new("xyz", Some("xxx")),
+    //        ],
+    //        table.flush()
+    //    );
+    //}
 }

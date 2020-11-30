@@ -100,9 +100,9 @@ mod tests {
     fn create_table() -> io::Result<()> {
         let path = "test_create_table";
         let pairs = vec![
-            InternalPair::new("abc", Some("defg")),
-            InternalPair::new("abc", None),
-            InternalPair::new("日本語💖", Some("ржавчина")),
+            InternalPair::new(b"abc", Some(b"defg")),
+            InternalPair::new(b"abc", None),
+            InternalPair::new("日本語💖".as_bytes(), Some("ржавчина".as_bytes())),
         ];
         let file = PersistedFile::new(path, &pairs)?;
         let _table = SSTable::new(file, pairs.clone(), 1)?;
@@ -117,35 +117,35 @@ mod tests {
     fn search_table() -> io::Result<()> {
         let path = "test_search_table";
         let pairs = vec![
-            InternalPair::new("abc00", Some("def")),
-            InternalPair::new("abc01", Some("defg")),
-            InternalPair::new("abc02", Some("de")),
-            InternalPair::new("abc03", Some("defgh")),
-            InternalPair::new("abc04", Some("defg")),
-            InternalPair::new("abc05", Some("defghij")),
-            InternalPair::new("abc06", Some("def")),
-            InternalPair::new("abc07", Some("defgh")),
-            InternalPair::new("abc08", None),
-            InternalPair::new("abc09", None),
-            InternalPair::new("abc10", None),
-            InternalPair::new("abc11", None),
-            InternalPair::new("abc12", None),
-            InternalPair::new("abc13", None),
-            InternalPair::new("abc14", None),
-            InternalPair::new("abc15", None),
+            InternalPair::new(b"abc00", Some(b"def")),
+            InternalPair::new(b"abc01", Some(b"defg")),
+            InternalPair::new(b"abc02", Some(b"de")),
+            InternalPair::new(b"abc03", Some(b"defgh")),
+            InternalPair::new(b"abc04", Some(b"defg")),
+            InternalPair::new(b"abc05", Some(b"defghij")),
+            InternalPair::new(b"abc06", Some(b"def")),
+            InternalPair::new(b"abc07", Some(b"defgh")),
+            InternalPair::new(b"abc08", None),
+            InternalPair::new(b"abc09", None),
+            InternalPair::new(b"abc10", None),
+            InternalPair::new(b"abc11", None),
+            InternalPair::new(b"abc12", None),
+            InternalPair::new(b"abc13", None),
+            InternalPair::new(b"abc14", None),
+            InternalPair::new(b"abc15", None),
         ];
         let file = PersistedFile::new(path, &pairs)?;
         let mut table = SSTable::new(file, pairs, 3)?;
         assert_eq!(
-            InternalPair::new("abc04", Some("defg")),
-            table.get("abc04".as_bytes()).unwrap().unwrap()
+            InternalPair::new(b"abc04", Some(b"defg")),
+            table.get(b"abc04").unwrap().unwrap()
         );
         assert_eq!(
-            InternalPair::new("abc15", None),
-            table.get("abc15".as_bytes()).unwrap().unwrap()
+            InternalPair::new(b"abc15", None),
+            table.get(b"abc15").unwrap().unwrap()
         );
-        assert_eq!(None, table.get("abc011".as_bytes()).unwrap());
-        assert_eq!(None, table.get("abc16".as_bytes()).unwrap());
+        assert_eq!(None, table.get(b"abc011").unwrap());
+        assert_eq!(None, table.get(b"abc16").unwrap());
         Ok(())
     }
 
@@ -153,22 +153,22 @@ mod tests {
     fn iterate_table() -> io::Result<()> {
         let path = "test_iterate_table";
         let pairs = vec![
-            InternalPair::new("abc00", Some("def")),
-            InternalPair::new("abc01", Some("defg")),
-            InternalPair::new("abc02", None),
+            InternalPair::new(b"abc00", Some(b"def")),
+            InternalPair::new(b"abc01", Some(b"defg")),
+            InternalPair::new(b"abc02", None),
         ];
         let file = PersistedFile::new(path, &pairs)?;
         let table = SSTable::new(file, pairs, 3)?;
         let mut table_iter = table.into_iter();
         assert_eq!(
-            Some(InternalPair::new("abc00", Some("def"))),
+            Some(InternalPair::new(b"abc00", Some(b"def"))),
             table_iter.next()
         );
         assert_eq!(
-            Some(InternalPair::new("abc01", Some("defg"))),
+            Some(InternalPair::new(b"abc01", Some(b"defg"))),
             table_iter.next()
         );
-        assert_eq!(Some(InternalPair::new("abc02", None)), table_iter.next());
+        assert_eq!(Some(InternalPair::new(b"abc02", None)), table_iter.next());
         assert_eq!(None, table_iter.next());
         Ok(())
     }
@@ -177,9 +177,9 @@ mod tests {
     fn open_existing_file() -> io::Result<()> {
         let path = "test_open_existing_file";
         let pairs = vec![
-            InternalPair::new("abc00", Some("def")),
-            InternalPair::new("abc01", Some("defg")),
-            InternalPair::new("abc02", None),
+            InternalPair::new(b"abc00", Some(b"def")),
+            InternalPair::new(b"abc01", Some(b"defg")),
+            InternalPair::new(b"abc02", None),
         ];
         let data = InternalPair::serialize_flatten(&pairs);
         prepare_sstable_file(path, &data)?;
