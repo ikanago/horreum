@@ -1,6 +1,6 @@
-use crate::format::InternalPair;
 use super::index::Index;
 use super::storage::PersistedFile;
+use crate::format::InternalPair;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::Path;
 

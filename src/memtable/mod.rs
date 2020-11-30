@@ -49,11 +49,12 @@ impl MemTable {
 
     pub async fn flush(&self) -> Vec<InternalPair> {
         let map = self.inner.read().await;
-        map.iter().map(|(key, entry)| match entry {
-            Entry::Value(value) => InternalPair::new(key, Some(value)),
-            Entry::Deleted => InternalPair::new(key, None),
-        })
-        .collect()
+        map.iter()
+            .map(|(key, entry)| match entry {
+                Entry::Value(value) => InternalPair::new(key, Some(value)),
+                Entry::Deleted => InternalPair::new(key, None),
+            })
+            .collect()
     }
 }
 

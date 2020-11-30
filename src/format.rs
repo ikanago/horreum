@@ -140,7 +140,10 @@ mod tests {
             3, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 97, 98, 99, 100, 101, 102, 103,
         ];
         let pair = InternalPair::deserialize(&mut bytes.as_slice()).unwrap();
-        assert_eq!(pair, InternalPair::new("abc".as_bytes(), Some("defg".as_bytes())));
+        assert_eq!(
+            pair,
+            InternalPair::new("abc".as_bytes(), Some("defg".as_bytes()))
+        );
     }
 
     #[test]
@@ -158,7 +161,10 @@ mod tests {
             184, 208, 189, 208, 176,
         ];
         let pair = InternalPair::deserialize(&mut bytes.as_slice()).unwrap();
-        assert_eq!(InternalPair::new("日本語💖".as_bytes(), Some("ржавчина".as_bytes())), pair);
+        assert_eq!(
+            InternalPair::new("日本語💖".as_bytes(), Some("ржавчина".as_bytes())),
+            pair
+        );
     }
 
     #[test]
