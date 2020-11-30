@@ -24,6 +24,7 @@ impl SSTable {
         Ok(Self { file, index })
     }
 
+    /// Open existing file and load key-value pairs in it.
     pub fn open<P: AsRef<Path>>(path: P, block_stride: usize) -> io::Result<Self> {
         let mut file = PersistedFile::open(path)?;
         let mut data = Vec::new();
@@ -47,7 +48,10 @@ impl SSTable {
 
         // Handle this Result
         let pairs = InternalPair::deserialize_from_bytes(&mut block_bytes).unwrap();
-        let pair = pairs.into_iter().find(|pair| pair.key == key);
+        let pair = match pairs.binary_search_by_key(&key, |entry| &entry.key) {
+            Ok(pos) => Some(pairs[pos].clone()),
+            Err(_) => None,
+        };
         Ok(pair)
     }
 }
@@ -137,15 +141,15 @@ mod tests {
         let file = PersistedFile::new(path, &pairs)?;
         let mut table = SSTable::new(file, pairs, 3)?;
         assert_eq!(
-            InternalPair::new(b"abc04", Some(b"defg")),
-            table.get(b"abc04").unwrap().unwrap()
+            Some(InternalPair::new(b"abc04", Some(b"defg"))),
+            table.get(b"abc04")?
         );
         assert_eq!(
-            InternalPair::new(b"abc15", None),
-            table.get(b"abc15").unwrap().unwrap()
+            Some(InternalPair::new(b"abc15", None)),
+            table.get(b"abc15")?
         );
-        assert_eq!(None, table.get(b"abc011").unwrap());
-        assert_eq!(None, table.get(b"abc16").unwrap());
+        assert_eq!(None, table.get(b"abc011")?);
+        assert_eq!(None, table.get(b"abc16")?);
         Ok(())
     }
 
@@ -185,7 +189,7 @@ mod tests {
         prepare_sstable_file(path, &data)?;
 
         let table = SSTable::open(path, 3)?;
-        let opened_pairs: Vec<InternalPair> = table.into_iter().collect();
+        let opened_pairs: Vec<_> = table.into_iter().collect();
         assert_eq!(pairs, opened_pairs);
         Ok(())
     }
