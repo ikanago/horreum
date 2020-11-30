@@ -1,9 +1,8 @@
 use bincode::{deserialize, serialize, Error};
-use serde::{Deserialize, Serialize};
 use std::io::{Cursor, Read};
 
 /// Internal representation of a key-value pair.
-#[derive(Clone, Debug, Deserialize, Serialize, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct InternalPair {
     pub(crate) key: Vec<u8>,
     /// If this pair is deleted, `value` is `None`.

@@ -47,12 +47,14 @@ impl MemTable {
         map.insert(key.to_vec(), Entry::Deleted);
     }
 
-    //pub async fn flush(&self) -> Vec<InternalPair> {
-    //    let map = self.inner.read().await;
-    //    map.iter().map(|(key, entry)| match entry {
-    //        Value(value) => InternalPair::new(key, value)
-    //    })
-    //}
+    pub async fn flush(&self) -> Vec<InternalPair> {
+        let map = self.inner.read().await;
+        map.iter().map(|(key, entry)| match entry {
+            Entry::Value(value) => InternalPair::new(key, Some(value)),
+            Entry::Deleted => InternalPair::new(key, None),
+        })
+        .collect()
+    }
 }
 
 #[cfg(test)]
@@ -96,29 +98,30 @@ mod tests {
         );
     }
 
-    //#[tokio::test]
-    //async fn flush() {
-    //    let mut table = MemTable::new();
-    //    table
-    //        .put("abc".as_bytes().to_vec(), "def".as_bytes().to_vec())
-    //        .await;
-    //    table
-    //        .put("rust".as_bytes().to_vec(), "nice".as_bytes().to_vec())
-    //        .await;
-    //    table
-    //        .put("cat".as_bytes().to_vec(), "hoge".as_bytes().to_vec())
-    //        .await;
-    //    table
-    //        .put("xyz".as_bytes().to_vec(), "xxx".as_bytes().to_vec())
-    //        .await;
-    //    table.delete("cat".as_bytes()).await;
-    //    assert_eq!(
-    //        vec![
-    //            InternalPair::new("abc", Some("def")),
-    //            InternalPair::new("rust", Some("nice")),
-    //            InternalPair::new("xyz", Some("xxx")),
-    //        ],
-    //        table.flush()
-    //    );
-    //}
+    #[tokio::test]
+    async fn flush() {
+        let mut table = MemTable::new();
+        table
+            .put("abc".as_bytes().to_vec(), "def".as_bytes().to_vec())
+            .await;
+        table
+            .put("rust".as_bytes().to_vec(), "nice".as_bytes().to_vec())
+            .await;
+        table
+            .put("cat".as_bytes().to_vec(), "hoge".as_bytes().to_vec())
+            .await;
+        table
+            .put("xyz".as_bytes().to_vec(), "xxx".as_bytes().to_vec())
+            .await;
+        table.delete("cat".as_bytes()).await;
+        assert_eq!(
+            vec![
+                InternalPair::new(b"abc", Some(b"def")),
+                InternalPair::new(b"cat", None),
+                InternalPair::new(b"rust", Some(b"nice")),
+                InternalPair::new(b"xyz", Some(b"xxx")),
+            ],
+            table.flush().await
+        );
+    }
 }
