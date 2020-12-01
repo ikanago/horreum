@@ -31,7 +31,7 @@ impl SSTable {
         let mut data = Vec::new();
         file.file.read_to_end(&mut data).await?;
         // Handle this Result
-        let pairs = InternalPair::deserialize_from_bytes(&mut data).unwrap();
+        let pairs = InternalPair::deserialize_from_bytes(&mut data).await.unwrap();
         let index = Index::new(pairs, block_stride);
 
         Ok(Self { file, index })
@@ -48,7 +48,7 @@ impl SSTable {
         let mut block_bytes = self.file.read_at(search_origin, length).await?;
 
         // Handle this Result
-        let pairs = InternalPair::deserialize_from_bytes(&mut block_bytes).unwrap();
+        let pairs = InternalPair::deserialize_from_bytes(&mut block_bytes).await.unwrap();
         let pair = match pairs.binary_search_by_key(&key, |entry| &entry.key) {
             Ok(pos) => Some(pairs[pos].clone()),
             Err(_) => None,
