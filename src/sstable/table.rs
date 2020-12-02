@@ -3,7 +3,6 @@ use super::storage::PersistedFile;
 use crate::format::InternalPair;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::Path;
-use tokio::io::AsyncReadExt;
 
 /// Represents a SSTable.
 #[derive(Debug)]
@@ -26,12 +25,12 @@ impl SSTable {
     }
 
     /// Open existing file and load key-value pairs in it.
-    pub async fn open<P: AsRef<Path>>(path: P, block_stride: usize) -> io::Result<Self> {
-        let mut file = PersistedFile::open(path).await?;
+    pub fn open<P: AsRef<Path>>(path: P, block_stride: usize) -> io::Result<Self> {
+        let mut file = PersistedFile::open(path)?;
         let mut data = Vec::new();
-        file.file.read_to_end(&mut data).await?;
+        file.read_to_end(&mut data)?;
         // Handle this Result
-        let pairs = InternalPair::deserialize_from_bytes(&mut data).await.unwrap();
+        let pairs = InternalPair::deserialize_from_bytes(&mut data).unwrap();
         let index = Index::new(pairs, block_stride);
 
         Ok(Self { file, index })
@@ -45,10 +44,10 @@ impl SSTable {
             Some(pos) => pos,
             None => return Ok(None),
         };
-        let mut block_bytes = self.file.read_at(search_origin, length).await?;
+        let mut block_bytes = self.file.read_at(search_origin, length)?;
 
         // Handle this Result
-        let pairs = InternalPair::deserialize_from_bytes(&mut block_bytes).await.unwrap();
+        let pairs = InternalPair::deserialize_from_bytes(&mut block_bytes).unwrap();
         let pair = match pairs.binary_search_by_key(&key, |entry| &entry.key) {
             Ok(pos) => Some(pairs[pos].clone()),
             Err(_) => None,
@@ -57,44 +56,47 @@ impl SSTable {
     }
 }
 
-//impl IntoIterator for SSTable {
-//    type Item = InternalPair;
-//    type IntoIter = SSTableIterator;
-//
-//    fn into_iter(self) -> Self::IntoIter {
-//        SSTableIterator::new(self.file)
-//    }
-//}
-//
-//#[derive(Debug)]
-//pub struct SSTableIterator {
-//    file: PersistedFile,
-//}
-//
-//impl SSTableIterator {
-//    pub fn new(file: PersistedFile) -> Self {
-//        let mut file = file;
-//        file.file.seek(SeekFrom::Start(0)).unwrap();
-//        Self { file }
-//    }
-//}
-//
-//impl Iterator for SSTableIterator {
-//    type Item = InternalPair;
-//
-//    fn next(&mut self) -> Option<Self::Item> {
-//        match InternalPair::deserialize(&mut self.file) {
-//            Ok(pair) => {
-//                if !pair.key.is_empty() {
-//                    Some(pair)
-//                } else {
-//                    None
-//                }
-//            }
-//            Err(_) => None,
-//        }
-//    }
-//}
+impl IntoIterator for SSTable {
+    type Item = InternalPair;
+    type IntoIter = SSTableIterator;
+
+    fn into_iter(self) -> Self::IntoIter {
+        SSTableIterator::new(self.file)
+    }
+}
+
+#[derive(Debug)]
+// I could not implement `Stream` for this because I could not find the way to
+// call async file read in `poll_next()` associated with `Stream`.
+// Due to this problem, all file read from `SSTable` is done through `std::io`.
+pub struct SSTableIterator {
+    file: PersistedFile,
+}
+
+impl SSTableIterator {
+    pub fn new(file: PersistedFile) -> Self {
+        let mut file = file;
+        file.buffer.seek(SeekFrom::Start(0)).unwrap();
+        Self { file }
+    }
+}
+
+impl Iterator for SSTableIterator {
+    type Item = InternalPair;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match InternalPair::deserialize(&mut self.file) {
+            Ok(pair) => {
+                if !pair.key.is_empty() {
+                    Some(pair)
+                } else {
+                    None
+                }
+            }
+            Err(_) => None,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -109,7 +111,7 @@ mod tests {
             InternalPair::new(b"abc", None),
             InternalPair::new("日本語💖".as_bytes(), Some("ржавчина".as_bytes())),
         ];
-        let file = PersistedFile::new(path, &pairs).await?;
+        let file = PersistedFile::new(path, &pairs)?;
         let _table = SSTable::new(file, pairs.clone(), 1)?;
         assert_eq!(
             InternalPair::serialize_flatten(&pairs),
@@ -139,7 +141,7 @@ mod tests {
             InternalPair::new(b"abc14", None),
             InternalPair::new(b"abc15", None),
         ];
-        let file = PersistedFile::new(path, &pairs).await?;
+        let file = PersistedFile::new(path, &pairs)?;
         let mut table = SSTable::new(file, pairs, 3)?;
         assert_eq!(
             Some(InternalPair::new(b"abc04", Some(b"defg"))),
@@ -154,7 +156,6 @@ mod tests {
         Ok(())
     }
 
-    /*
     #[tokio::test]
     async fn iterate_table() -> io::Result<()> {
         let path = "test_iterate_table";
@@ -163,7 +164,7 @@ mod tests {
             InternalPair::new(b"abc01", Some(b"defg")),
             InternalPair::new(b"abc02", None),
         ];
-        let file = PersistedFile::new(path, &pairs).await?;
+        let file = PersistedFile::new(path, &pairs)?;
         let table = SSTable::new(file, pairs, 3)?;
         let mut table_iter = table.into_iter();
         assert_eq!(
@@ -179,8 +180,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn open_existing_file() -> io::Result<()> {
+    #[test]
+    fn open_existing_file() -> io::Result<()> {
         let path = "test_open_existing_file";
         let pairs = vec![
             InternalPair::new(b"abc00", Some(b"def")),
@@ -190,10 +191,9 @@ mod tests {
         let data = InternalPair::serialize_flatten(&pairs);
         prepare_sstable_file(path, &data)?;
 
-        let table = SSTable::open(path, 3).await?;
+        let table = SSTable::open(path, 3)?;
         let opened_pairs: Vec<_> = table.into_iter().collect();
         assert_eq!(pairs, opened_pairs);
         Ok(())
     }
-    */
 }

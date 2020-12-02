@@ -1,6 +1,6 @@
 use super::storage::PersistedFile;
 // use super::table::{SSTable, SSTableIterator};
-use super::table::SSTable;
+use super::table::{SSTable, SSTableIterator};
 use crate::format::InternalPair;
 use std::cmp::Reverse;
 use std::collections::VecDeque;
@@ -34,14 +34,10 @@ impl SSTableManager {
             .filter_map(|path| path.ok())
             .collect();
         paths.sort_by_key(|path| Reverse(path.path()));
-        //let tables = paths
-        //    .iter()
-        //    .filter_map(|path| SSTable::open(path.path(), block_stride).ok())
-        //    .collect();
-        let mut tables = VecDeque::new();
-        for path in &paths {
-            tables.push_back(SSTable::open(path.path(), block_stride).await?);
-        }
+        let tables = paths
+            .iter()
+            .filter_map(|path| SSTable::open(path.path(), block_stride).ok())
+            .collect();
         Ok(Self {
             table_directory,
             block_stride,
@@ -50,9 +46,9 @@ impl SSTableManager {
     }
 
     /// Create a new SSTable with given pairs.
-    pub async fn create(&mut self, pairs: Vec<InternalPair>) -> io::Result<()> {
+    pub fn create(&mut self, pairs: Vec<InternalPair>) -> io::Result<()> {
         let table_path = self.new_table_path();
-        let file = PersistedFile::new(table_path, &pairs).await?;
+        let file = PersistedFile::new(table_path, &pairs)?;
         let table = SSTable::new(file, pairs, 3).unwrap();
         self.tables.push_front(table);
         Ok(())
@@ -76,7 +72,7 @@ impl SSTableManager {
         Ok(None)
     }
 
-    /*
+    
     /// Compact current all SSTables into a new one.
     pub fn compact(&mut self) -> io::Result<()> {
         let num_tables = self.tables.len();
@@ -136,7 +132,6 @@ impl SSTableManager {
         }
         pairs
     }
-    */
 }
 
 #[cfg(test)]
@@ -194,9 +189,9 @@ mod tests {
             InternalPair::new(b"abc01", None),
         ];
         let pairs3 = vec![InternalPair::new(b"abc02", Some(b"def"))];
-        manager.create(pairs1).await?;
-        manager.create(pairs2).await?;
-        manager.create(pairs3).await?;
+        manager.create(pairs1)?;
+        manager.create(pairs2)?;
+        manager.create(pairs3)?;
         assert_eq!(
             InternalPair::new(b"abc00", Some(b"xyz")),
             manager.get(b"abc00").await?.unwrap()
@@ -212,8 +207,7 @@ mod tests {
         Ok(())
     }
 
-    /*
-    #[tokio::test]
+    #[test]
     fn compaction() {
         let table1 = vec![
             InternalPair::new(b"abc00", Some(b"def")),
@@ -245,5 +239,5 @@ mod tests {
             expected,
             SSTableManager::compact_inner(num_table, table_iterators)
         );
-    }*/
+    }
 }
