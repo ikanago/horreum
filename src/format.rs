@@ -1,5 +1,6 @@
 use bincode::{deserialize, serialize, Error};
-use std::io::{Cursor, Read};
+use std::io::Cursor;
+use tokio::io::{AsyncRead, AsyncReadExt};
 
 /// Internal representation of a key-value pair.
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
@@ -41,17 +42,17 @@ impl InternalPair {
     }
 
     /// Deserialize `Vec<u8>` into struct's members.
-    pub fn deserialize<R: Read>(reader: &mut R) -> Result<Self, Error> {
-        InternalPair::deserialize_inner(reader)
+    pub async fn deserialize<R: AsyncRead + Unpin>(reader: &mut R) -> Result<Self, Error> {
+        InternalPair::deserialize_inner(reader).await
     }
 
     /// Deserialize bytes of pairs.
-    pub fn deserialize_from_bytes(bytes: &mut [u8]) -> Result<Vec<Self>, Error> {
+    pub async fn deserialize_from_bytes(bytes: &mut [u8]) -> Result<Vec<Self>, Error> {
         let mut pairs = vec![];
         let bytes_length = bytes.len() as u64;
         let mut cursor = Cursor::new(bytes);
         while cursor.position() < bytes_length {
-            let pair = Self::deserialize_inner(&mut cursor)?;
+            let pair = Self::deserialize_inner(&mut cursor).await?;
             pairs.push(pair);
         }
         Ok(pairs)
@@ -59,13 +60,13 @@ impl InternalPair {
 
     // Deserialize key and value from something implemented `Read`
     // and return `Self` and the number of bytes read from.
-    fn deserialize_inner<R: Read>(reader: &mut R) -> Result<Self, Error> {
+    async fn deserialize_inner<R: AsyncRead + Unpin>(reader: &mut R) -> Result<Self, Error> {
         let mut length_buffer = vec![0; 16];
-        reader.read_exact(&mut length_buffer)?;
+        reader.read_exact(&mut length_buffer).await?;
         let key_length: usize = deserialize(&length_buffer[..8])?;
         let value_length: usize = deserialize(&length_buffer[8..])?;
         let mut content_buffer = vec![0; key_length + value_length];
-        reader.read_exact(&mut content_buffer)?;
+        reader.read_exact(&mut content_buffer).await?;
         let key = content_buffer[..key_length].to_vec();
         let value = if value_length > 0 {
             Some(content_buffer[key_length..].to_vec())
@@ -134,33 +135,39 @@ mod tests {
         );
     }
 
-    #[test]
-    fn deserialize() {
+    #[tokio::test]
+    async fn deserialize() {
         let bytes = vec![
             3, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 97, 98, 99, 100, 101, 102, 103,
         ];
-        let pair = InternalPair::deserialize(&mut bytes.as_slice()).unwrap();
+        let pair = InternalPair::deserialize(&mut bytes.as_slice())
+            .await
+            .unwrap();
         assert_eq!(
             pair,
             InternalPair::new("abc".as_bytes(), Some("defg".as_bytes()))
         );
     }
 
-    #[test]
-    fn deserialize_lacking_value() {
+    #[tokio::test]
+    async fn deserialize_lacking_value() {
         let bytes = vec![3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 97, 98, 99];
-        let pair = InternalPair::deserialize(&mut bytes.as_slice()).unwrap();
+        let pair = InternalPair::deserialize(&mut bytes.as_slice())
+            .await
+            .unwrap();
         assert_eq!(InternalPair::new("abc".as_bytes(), None), pair);
     }
 
-    #[test]
-    fn deserialize_non_ascii() {
+    #[tokio::test]
+    async fn deserialize_non_ascii() {
         let bytes = vec![
             13, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 230, 151, 165, 230, 156, 172, 232,
             170, 158, 240, 159, 146, 150, 209, 128, 208, 182, 208, 176, 208, 178, 209, 135, 208,
             184, 208, 189, 208, 176,
         ];
-        let pair = InternalPair::deserialize(&mut bytes.as_slice()).unwrap();
+        let pair = InternalPair::deserialize(&mut bytes.as_slice())
+            .await
+            .unwrap();
         assert_eq!(
             InternalPair::new("日本語💖".as_bytes(), Some("ржавчина".as_bytes())),
             pair
@@ -175,8 +182,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn deserialize_from_bytes() {
+    #[tokio::test]
+    async fn deserialize_from_bytes() {
         let pairs = vec![
             InternalPair::new("abc00".as_bytes(), Some("def".as_bytes())),
             InternalPair::new("abc01".as_bytes(), Some("defg".as_bytes())),
@@ -186,7 +193,9 @@ mod tests {
         let mut bytes: Vec<u8> = pairs.iter().flat_map(|pair| pair.serialize()).collect();
         assert_eq!(
             pairs,
-            InternalPair::deserialize_from_bytes(&mut bytes).unwrap()
+            InternalPair::deserialize_from_bytes(&mut bytes)
+                .await
+                .unwrap()
         );
     }
 }
