@@ -24,6 +24,7 @@ pub struct SSTableManager {
 }
 
 impl SSTableManager {
+    /// Open existing SSTable files.
     pub async fn new<P: AsRef<Path>>(directory: P, block_stride: usize) -> io::Result<Self> {
         let mut table_directory = PathBuf::new();
         table_directory.push(directory);
@@ -33,10 +34,6 @@ impl SSTableManager {
             .filter_map(|path| path.ok())
             .collect();
         paths.sort_by_key(|path| Reverse(path.path()));
-        // let tables = paths
-        // .iter()
-        // .filter_map(|path| SSTable::open(path.path(), block_stride).ok())
-        // .collect();
         let mut tables = VecDeque::new();
         for path in paths {
             tables.push_back(SSTable::open(path.path(), block_stride).await?)
