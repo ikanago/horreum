@@ -1,19 +1,20 @@
-use crate::http::QueryError;
-use crate::index::Index;
+use crate::{horreum::Horreum, http::QueryError};
 use hyper::{service, Body, Method, Request, Response, Server, StatusCode};
 use log::warn;
 use std::convert::Infallible;
 use std::net;
+use std::str;
 
-pub async fn serve(index: &Index, port: u16) -> Result<(), hyper::Error> {
+pub async fn serve(db: &Horreum, port: u16) -> Result<(), hyper::Error> {
     let addr = net::IpAddr::from([127, 0, 0, 1]);
     let addr = net::SocketAddr::new(addr, port);
     let service = service::make_service_fn(move |_| {
-        let index = index.clone();
+        let db = db.clone();
+        dbg!("Request");
         async move {
             Ok::<_, Infallible>(service::service_fn(move |req| {
-                let index = index.clone();
-                async move { handle(req, &index).await }
+                let db = db.clone();
+                async move { handle(req, &db).await }
             }))
         }
     });
@@ -26,11 +27,11 @@ pub async fn serve(index: &Index, port: u16) -> Result<(), hyper::Error> {
     Ok(())
 }
 
-async fn handle(request: Request<Body>, index: &Index) -> Result<Response<Body>, hyper::Error> {
+async fn handle(request: Request<Body>, db: &Horreum) -> Result<Response<Body>, hyper::Error> {
     let response_message = match (request.method(), request.uri().path()) {
-        (&Method::GET, "/") => get(request.uri().query(), index),
-        (&Method::POST, "/") => put(request.uri().query(), index),
-        (&Method::DELETE, "/") => delete(request.uri().query(), index),
+        (&Method::GET, "/") => get(request.uri().query(), db).await,
+        (&Method::POST, "/") => put(request.uri().query(), db).await,
+        (&Method::DELETE, "/") => delete(request.uri().query(), db).await,
         _ => {
             return Ok(Response::builder()
                 .status(StatusCode::NOT_FOUND)
@@ -53,32 +54,36 @@ async fn handle(request: Request<Body>, index: &Index) -> Result<Response<Body>,
     }
 }
 
-fn get(query: Option<&str>, index: &Index) -> Result<String, QueryError> {
+async fn get(query: Option<&str>, db: &Horreum) -> Result<String, QueryError> {
     let key = get_key(query)?;
-    let value = match index.get(&key) {
+    dbg!(&key);
+    let value = match db.get(&key.as_bytes()).await {
         Some(value) => value,
         None => return Ok(format!("No entry for {}", key)),
     };
+    // Unwrap value here because stored data must be encoded from valid utf-8 string.
+    let value = str::from_utf8(&value).unwrap().to_string();
     Ok(value)
 }
 
-fn put(query: Option<&str>, index: &Index) -> Result<String, QueryError> {
+async fn put(query: Option<&str>, db: &Horreum) -> Result<String, QueryError> {
     let (key, value) = get_key_value(query)?;
-    index.put(key, value);
+    dbg!(&key, &value);
+    db.put(key.as_bytes().to_vec(), value.as_bytes().to_vec())
+        .await;
     Ok("Put".to_string())
 }
 
-fn delete(query: Option<&str>, index: &Index) -> Result<String, QueryError> {
+async fn delete(query: Option<&str>, db: &Horreum) -> Result<String, QueryError> {
     let key = get_key(query)?;
-    let deleted_value = match index.delete(&key) {
-        Some(value) => value,
-        None => return Ok(format!("No entry for {}", key)),
+    dbg!(&key);
+    if !db.delete(&key.as_bytes()).await {
+        return Ok(format!("No entry for {}", key));
     };
-    Ok(deleted_value)
+    Ok("Successfully Deleted".to_string())
 }
 
 /// Get key from a request URI.
-/// It is used to delete or get data from an index.
 fn get_key(query: Option<&str>) -> Result<String, QueryError> {
     let query = query.ok_or(QueryError::Empty)?;
     let query = qstring::QString::from(query);
@@ -89,7 +94,6 @@ fn get_key(query: Option<&str>) -> Result<String, QueryError> {
 }
 
 /// Get key and value from a request URI.
-/// They are used to put data into an index.
 fn get_key_value(query: Option<&str>) -> Result<(String, String), QueryError> {
     let query = query.ok_or(QueryError::Empty)?;
     let query = qstring::QString::from(query);
