@@ -27,7 +27,7 @@ impl MemTable {
     }
 
     /// Create a new key-value entry.
-    pub async fn put(&mut self, key: Vec<u8>, value: Vec<u8>) {
+    pub async fn put(&self, key: Vec<u8>, value: Vec<u8>) {
         let mut map = self.inner.write().await;
         map.insert(key, Entry::Value(value));
     }
@@ -42,9 +42,10 @@ impl MemTable {
     }
 
     /// Mark value corresponding to a key as deleted.
-    pub async fn delete(&mut self, key: &[u8]) {
+    /// Return `true` if there was an entry to delete.
+    pub async fn delete(&self, key: &[u8]) -> bool {
         let mut map = self.inner.write().await;
-        map.insert(key.to_vec(), Entry::Deleted);
+        map.insert(key.to_vec(), Entry::Deleted).is_some()
     }
 
     pub async fn flush(&self) -> Vec<InternalPair> {
@@ -64,7 +65,7 @@ mod tests {
 
     #[tokio::test]
     async fn put_and_get() {
-        let mut table = MemTable::new();
+        let table = MemTable::new();
         table
             .put("abc".as_bytes().to_vec(), "def".as_bytes().to_vec())
             .await;
@@ -83,14 +84,15 @@ mod tests {
 
     #[tokio::test]
     async fn delete() {
-        let mut table = MemTable::new();
+        let table = MemTable::new();
         table
             .put("abc".as_bytes().to_vec(), "def".as_bytes().to_vec())
             .await;
         table
             .put("xyz".as_bytes().to_vec(), "xxx".as_bytes().to_vec())
             .await;
-        table.delete("abc".as_bytes()).await;
+        assert!(table.delete("abc".as_bytes()).await);
+        assert!(!table.delete("abcdef".as_bytes()).await);
         assert_eq!(Some(Entry::Deleted), table.get("abc".as_bytes()).await);
         assert_eq!(None, table.get("111".as_bytes()).await);
         assert_eq!(
@@ -101,7 +103,7 @@ mod tests {
 
     #[tokio::test]
     async fn flush() {
-        let mut table = MemTable::new();
+        let table = MemTable::new();
         table
             .put("abc".as_bytes().to_vec(), "def".as_bytes().to_vec())
             .await;
