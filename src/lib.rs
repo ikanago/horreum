@@ -5,5 +5,5 @@ pub mod index;
 mod memtable;
 mod sstable;
 
-pub use horreum::Horreum;
+pub use crate::horreum::Horreum;
 pub use http::serve;
