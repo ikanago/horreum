@@ -1,5 +1,5 @@
 use clap::{clap_app, crate_version};
-use horreum::{Horreum, http};
+use horreum::{http, Horreum};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
