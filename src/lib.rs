@@ -6,4 +6,4 @@ mod memtable;
 mod sstable;
 
 pub use http::serve;
-pub use index::Index;
+pub use horreum::Horreum;

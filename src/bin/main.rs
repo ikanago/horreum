@@ -1,5 +1,5 @@
 use clap::{clap_app, crate_version};
-use horreum::{horreum::Horreum, http};
+use horreum::{Horreum, http};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -7,7 +7,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         (version: crate_version!())
         (@arg PORT: -p --port +takes_value "Number of threads to handle requests")
         (@arg STRIDE: -s --stride +takes_value "Size of block of SSTable index")
-        (@arg DIR: -d --dir +required +takes_value "Directory storing SSTable files")
+        (@arg DIR: -d --dir +takes_value "Directory storing SSTable files")
     )
     .get_matches();
 

@@ -1,6 +1,6 @@
 use crate::{horreum::Horreum, http::QueryError};
 use hyper::{service, Body, Method, Request, Response, Server, StatusCode};
-use log::warn;
+use log::{info, warn};
 use std::convert::Infallible;
 use std::net;
 use std::str;
@@ -10,9 +10,9 @@ pub async fn serve(db: &Horreum, port: u16) -> Result<(), hyper::Error> {
     let addr = net::SocketAddr::new(addr, port);
     let service = service::make_service_fn(move |_| {
         let db = db.clone();
-        dbg!("Request");
         async move {
             Ok::<_, Infallible>(service::service_fn(move |req| {
+                dbg!(&req);
                 let db = db.clone();
                 async move { handle(req, &db).await }
             }))
