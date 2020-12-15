@@ -40,10 +40,10 @@ impl Horreum {
     }
 
     pub async fn put(&self, key: Vec<u8>, value: Vec<u8>) {
-        self.memtable.put(key, value).await
+        self.memtable.put(key, value).await;
     }
 
     pub async fn delete(&self, key: &[u8]) -> bool {
-        self.memtable.delete(key).await
+        self.memtable.delete(key).await.is_some()
     }
 }

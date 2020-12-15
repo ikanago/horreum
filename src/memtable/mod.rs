@@ -26,12 +26,6 @@ impl MemTable {
         }
     }
 
-    /// Create a new key-value entry.
-    pub async fn put(&self, key: Vec<u8>, value: Vec<u8>) {
-        let mut map = self.inner.write().await;
-        map.insert(key, Entry::Value(value));
-    }
-
     /// Get value corresponding to a given key.
     /// If `MemTable` has a value for the key, return `Some(Value())`.
     /// If `MemTable` has an entry for the key but it has deleted, return `Some(Deleted)`.
@@ -41,11 +35,22 @@ impl MemTable {
         map.get(key).cloned()
     }
 
+    /// Create a new key-value entry.
+    pub async fn put(&self, key: Vec<u8>, value: Vec<u8>) -> Option<Entry> {
+        let mut map = self.inner.write().await;
+        map.insert(key, Entry::Value(value))
+    }
+
     /// Mark value corresponding to a key as deleted.
     /// Return `true` if there was an entry to delete.
-    pub async fn delete(&self, key: &[u8]) -> bool {
+    pub async fn delete(&self, key: &[u8]) -> Option<Entry> {
         let mut map = self.inner.write().await;
-        map.insert(key.to_vec(), Entry::Deleted).is_some()
+        // Check entry for the key to avoid mark a key which is not registered as `Deleted`.
+        if map.get(key).is_some() {
+            map.insert(key.to_vec(), Entry::Deleted)
+        } else {
+            None
+        }
     }
 
     pub async fn flush(&self) -> Vec<InternalPair> {
@@ -66,57 +71,49 @@ mod tests {
     #[tokio::test]
     async fn put_and_get() {
         let table = MemTable::new();
-        table
-            .put("abc".as_bytes().to_vec(), "def".as_bytes().to_vec())
-            .await;
-        table
-            .put("xyz".as_bytes().to_vec(), "xxx".as_bytes().to_vec())
-            .await;
+        assert_eq!(None, table.put(b"abc".to_vec(), b"def".to_vec()).await);
+        assert_eq!(None, table.put(b"xyz".to_vec(), b"xxx".to_vec()).await);
         assert_eq!(
-            Some(Entry::Value("def".as_bytes().to_vec())),
-            table.get("abc".as_bytes()).await
+            Some(Entry::Value(b"xxx".to_vec())),
+            table.put(b"xyz".to_vec(), b"qwerty".to_vec()).await
         );
+        assert_eq!(Some(Entry::Value(b"def".to_vec())), table.get(b"abc").await);
         assert_eq!(
-            Some(Entry::Value("xxx".as_bytes().to_vec())),
-            table.get("xyz".as_bytes()).await
+            Some(Entry::Value(b"qwerty".to_vec())),
+            table.get(b"xyz").await
         );
     }
 
     #[tokio::test]
     async fn delete() {
         let table = MemTable::new();
-        table
-            .put("abc".as_bytes().to_vec(), "def".as_bytes().to_vec())
-            .await;
-        table
-            .put("xyz".as_bytes().to_vec(), "xxx".as_bytes().to_vec())
-            .await;
-        assert!(table.delete("abc".as_bytes()).await);
-        assert!(!table.delete("abcdef".as_bytes()).await);
-        assert_eq!(Some(Entry::Deleted), table.get("abc".as_bytes()).await);
-        assert_eq!(None, table.get("111".as_bytes()).await);
+        table.put(b"abc".to_vec(), b"def".to_vec()).await;
+        table.put(b"xyz".to_vec(), b"xxx".to_vec()).await;
         assert_eq!(
-            Some(Entry::Value("xxx".as_bytes().to_vec())),
-            table.get("xyz".as_bytes()).await
+            Some(Entry::Value(b"def".to_vec())),
+            table.delete(b"abc").await
         );
+        assert_eq!(None, table.delete(b"abcdef").await);
+        assert_eq!(Some(Entry::Deleted), table.get(b"abc").await);
+        assert_eq!(None, table.get(b"111").await);
+        assert_eq!(Some(Entry::Value(b"xxx".to_vec())), table.get(b"xyz").await);
+    }
+
+    #[tokio::test]
+    async fn delete_non_existing() {
+        let table = MemTable::new();
+        assert_eq!(None, table.delete(b"abc").await);
+        assert_eq!(None, table.get(b"abc").await);
     }
 
     #[tokio::test]
     async fn flush() {
         let table = MemTable::new();
-        table
-            .put("abc".as_bytes().to_vec(), "def".as_bytes().to_vec())
-            .await;
-        table
-            .put("rust".as_bytes().to_vec(), "nice".as_bytes().to_vec())
-            .await;
-        table
-            .put("cat".as_bytes().to_vec(), "hoge".as_bytes().to_vec())
-            .await;
-        table
-            .put("xyz".as_bytes().to_vec(), "xxx".as_bytes().to_vec())
-            .await;
-        table.delete("cat".as_bytes()).await;
+        table.put(b"abc".to_vec(), b"def".to_vec()).await;
+        table.put(b"rust".to_vec(), b"nice".to_vec()).await;
+        table.put(b"cat".to_vec(), b"hoge".to_vec()).await;
+        table.put(b"xyz".to_vec(), b"xxx".to_vec()).await;
+        table.delete(b"cat").await;
         assert_eq!(
             vec![
                 InternalPair::new(b"abc", Some(b"def")),
