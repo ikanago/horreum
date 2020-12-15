@@ -1,3 +1,4 @@
+use crate::command::Command;
 use crate::{
     memtable::{Entry, MemTable},
     sstable::manager::SSTableManager,
@@ -27,6 +28,10 @@ impl Horreum {
             memtable: Arc::new(memtable),
             sstable_manager: Arc::new(manager),
         })
+    }
+
+    pub async fn apply(&self, command: Command) -> Option<Entry> {
+        self.memtable.apply(command).await
     }
 
     pub async fn get(&self, key: &[u8]) -> Option<Vec<u8>> {

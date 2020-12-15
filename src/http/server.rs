@@ -1,6 +1,6 @@
 use crate::{horreum::Horreum, http::QueryError};
 use hyper::{service, Body, Method, Request, Response, Server, StatusCode};
-use log::{info, warn};
+use log::warn;
 use std::convert::Infallible;
 use std::net;
 use std::str;
@@ -104,51 +104,5 @@ fn get_key_value(query: Option<&str>) -> Result<(String, String), QueryError> {
         (None, Some(_)) => Err(QueryError::LacksKey),
         (Some(_), None) => Err(QueryError::LacksValue),
         _ => Err(QueryError::Empty),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::http::server::*;
-
-    #[test]
-    #[should_panic]
-    fn test_get_key_with_empty_query() {
-        get_key(None).unwrap();
-    }
-
-    #[test]
-    fn test_get_key() {
-        let query = Some("key=abc");
-        assert_eq!("abc".to_string(), get_key(query).unwrap());
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_get_key_value_with_empty_query() {
-        get_key_value(None).unwrap();
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_get_key_value_only_with_key() {
-        let query = Some("key=abc");
-        get_key_value(query).unwrap();
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_get_key_value_only_with_value() {
-        let query = Some("value=def");
-        get_key_value(query).unwrap();
-    }
-
-    #[test]
-    fn test_get_key_value() {
-        let query = Some("key=abc&value=def");
-        assert_eq!(
-            ("abc".to_string(), "def".to_string()),
-            get_key_value(query).unwrap()
-        );
     }
 }

@@ -3,7 +3,7 @@ mod server;
 pub use server::serve;
 use thiserror::Error;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq, Eq)]
 pub enum QueryError {
     #[error("Key and value not specified")]
     Empty,
@@ -11,6 +11,6 @@ pub enum QueryError {
     LacksKey,
     #[error("Value not specified")]
     LacksValue,
-    #[error("No entry for {0}")]
-    NoEntry(String),
+    #[error("Invalid HTTP method")]
+    InvalidMethod,
 }

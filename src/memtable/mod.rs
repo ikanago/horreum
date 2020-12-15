@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use tokio::sync::RwLock;
 
+use crate::command::Command;
 use crate::format::InternalPair;
 
 /// `MemTable` is an in-memory key-value store.  
@@ -23,6 +24,14 @@ impl MemTable {
     pub fn new() -> Self {
         Self {
             inner: RwLock::new(BTreeMap::new()),
+        }
+    }
+
+    pub async fn apply<'a>(&self, command: Command) -> Option<Entry> {
+        match command {
+            Command::Get { key } => self.get(&key).await,
+            Command::Put { key, value } => self.put(key, value).await,
+            Command::Delete { key } => self.delete(&key).await,
         }
     }
 
