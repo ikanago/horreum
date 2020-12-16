@@ -1,4 +1,5 @@
 mod command;
+mod error;
 mod format;
 pub mod horreum;
 pub mod http;

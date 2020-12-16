@@ -15,7 +15,7 @@ pub async fn serve(db: &Horreum, port: u16) -> Result<(), hyper::Error> {
             Ok::<_, Infallible>(service::service_fn(move |req| {
                 dbg!(&req);
                 let db = db.clone();
-                async move { handle(req, &db).await }
+                async move { handle(&db, req).await }
             }))
         }
     });
@@ -28,7 +28,7 @@ pub async fn serve(db: &Horreum, port: u16) -> Result<(), hyper::Error> {
     Ok(())
 }
 
-async fn handle(request: Request<Body>, db: &Horreum) -> Result<Response<Body>, hyper::Error> {
+async fn handle(db: &Horreum, request: Request<Body>) -> Result<Response<Body>, Infallible> {
     if request.uri().path() != "/" {
         return Ok(Response::builder()
             .status(StatusCode::NOT_FOUND)
@@ -51,12 +51,12 @@ async fn handle(request: Request<Body>, db: &Horreum) -> Result<Response<Body>, 
         .unwrap())
 }
 
-async fn apply(db: &Horreum, command: Command) -> String {
+async fn apply(db: &Horreum, command: Command) -> Vec<u8> {
     match db.apply(command).await {
         Some(entry) => match entry {
-            Entry::Value(value) => String::from_utf8(value).unwrap(),
-            Entry::Deleted => "Deleted".to_string(),
+            Entry::Value(value) => value,
+            Entry::Deleted => b"Deleted".to_vec(),
         },
-        None => "Entry not exist".to_string(),
+        None => b"Entry not exist".to_vec(),
     }
 }

@@ -1,5 +1,6 @@
-use crate::http::QueryError;
+use crate::error::Error;
 use hyper::Method;
+use qstring::QString;
 
 /// Represents actions to key-value store and holds necessary data.
 #[derive(Debug, PartialEq, Eq)]
@@ -10,7 +11,7 @@ pub enum Command {
 }
 
 impl Command {
-    pub fn new(method: &Method, query: Option<&str>) -> Result<Command, QueryError> {
+    pub fn new(method: &Method, query: Option<&str>) -> Result<Command, Error> {
         match method {
             &Method::GET => Ok(Command::Get {
                 key: get_key(query)?,
@@ -22,32 +23,32 @@ impl Command {
             &Method::DELETE => Ok(Command::Delete {
                 key: get_key(query)?,
             }),
-            _ => Err(QueryError::InvalidMethod),
+            _ => Err(Error::InvalidMethod),
         }
     }
 }
 
 /// Get key from a request URI.
-fn get_key(query: Option<&str>) -> Result<Vec<u8>, QueryError> {
-    let query = query.ok_or(QueryError::Empty)?;
-    let query = qstring::QString::from(query);
+fn get_key(query: Option<&str>) -> Result<Vec<u8>, Error> {
+    let query = query.ok_or(Error::EmptyQuery)?;
+    let query = QString::from(query);
     match query.get("key") {
         Some(key) => Ok(key.as_bytes().to_vec()),
-        None => Err(QueryError::LacksKey),
+        None => Err(Error::LacksKey),
     }
 }
 
 /// Get key and value from a request URI.
-fn get_key_value(query: Option<&str>) -> Result<(Vec<u8>, Vec<u8>), QueryError> {
-    let query = query.ok_or(QueryError::Empty)?;
-    let query = qstring::QString::from(query);
+fn get_key_value(query: Option<&str>) -> Result<(Vec<u8>, Vec<u8>), Error> {
+    let query = query.ok_or(Error::EmptyQuery)?;
+    let query = QString::from(query);
     let key = query.get("key");
     let value = query.get("value");
     match (key, value) {
         (Some(key), Some(value)) => Ok((key.as_bytes().to_vec(), value.as_bytes().to_vec())),
-        (None, Some(_)) => Err(QueryError::LacksKey),
-        (Some(_), None) => Err(QueryError::LacksValue),
-        _ => Err(QueryError::Empty),
+        (None, Some(_)) => Err(Error::LacksKey),
+        (Some(_), None) => Err(Error::LacksValue),
+        _ => Err(Error::EmptyQuery),
     }
 }
 
@@ -89,7 +90,7 @@ mod tests {
     #[test]
     fn invalid_method() {
         assert_eq!(
-            Err(QueryError::InvalidMethod),
+            Err(Error::InvalidMethod),
             Command::new(&Method::POST, Some("key=a&value=b"))
         );
     }
