@@ -1,7 +1,8 @@
 use crate::command::Command;
 use crate::horreum::Horreum;
 use crate::memtable::Entry;
-use hyper::{service, Body, Request, Response, Server, StatusCode};
+use hyper::server::Server;
+use hyper::{service, Body, Request, Response, StatusCode};
 use log::warn;
 use std::convert::Infallible;
 use std::net;
@@ -19,8 +20,8 @@ pub async fn serve(db: &Horreum, port: u16) -> Result<(), hyper::Error> {
             }))
         }
     });
-    let server = Server::bind(&addr).serve(service);
 
+    let server = Server::bind(&addr).serve(service);
     if let Err(e) = server.await {
         warn!("{}", e);
         return Err(e);

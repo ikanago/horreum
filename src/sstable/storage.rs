@@ -2,7 +2,7 @@ use crate::format::InternalPair;
 use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
 use tokio::fs::{File, OpenOptions};
-use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
+use tokio::io::{self, AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
 /// Represents manipulating an SSTable file.
 /// Contents of the file will never be modified.
