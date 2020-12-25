@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
-use tokio::sync::RwLock;
+use tokio::sync::{mpsc, RwLock};
 
 use crate::command::Command;
 use crate::format::InternalPair;
+use crate::Message;
 
 /// `MemTable` is an in-memory key-value store.  
 /// Imbound data is accumulated in `BTreeMap` this struct holds.
@@ -11,6 +12,7 @@ pub struct MemTable {
     // Because this struct is planned to use in asynchronous process,
     // a map of key and value is wrapped in `RwLock`.
     inner: RwLock<BTreeMap<Vec<u8>, Entry>>,
+    command_rx: mpsc::Receiver<Message>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -21,9 +23,19 @@ pub enum Entry {
 
 impl MemTable {
     /// Create a new instance.
-    pub fn new() -> Self {
+    pub fn new(command_rx: mpsc::Receiver<Message>) -> Self {
         Self {
             inner: RwLock::new(BTreeMap::new()),
+            command_rx,
+        }
+    }
+
+    pub async fn listen(&mut self) {
+        while let Some((command, tx)) = self.command_rx.recv().await {
+            let entry = self.apply(command).await;
+            if let Err(_) = tx.send(entry).await {
+                dbg!("The receiver dropped");
+            };
         }
     }
 
@@ -79,7 +91,8 @@ mod tests {
 
     #[tokio::test]
     async fn put_and_get() {
-        let table = MemTable::new();
+        let (_, rx) = mpsc::channel(1);
+        let table = MemTable::new(rx);
         assert_eq!(None, table.put(b"abc".to_vec(), b"def".to_vec()).await);
         assert_eq!(None, table.put(b"xyz".to_vec(), b"xxx".to_vec()).await);
         assert_eq!(
@@ -95,7 +108,8 @@ mod tests {
 
     #[tokio::test]
     async fn delete() {
-        let table = MemTable::new();
+        let (_, rx) = mpsc::channel(1);
+        let table = MemTable::new(rx);
         table.put(b"abc".to_vec(), b"def".to_vec()).await;
         table.put(b"xyz".to_vec(), b"xxx".to_vec()).await;
         assert_eq!(
@@ -110,14 +124,16 @@ mod tests {
 
     #[tokio::test]
     async fn delete_non_existing() {
-        let table = MemTable::new();
+        let (_, rx) = mpsc::channel(1);
+        let table = MemTable::new(rx);
         assert_eq!(None, table.delete(b"abc").await);
         assert_eq!(None, table.get(b"abc").await);
     }
 
     #[tokio::test]
     async fn flush() {
-        let table = MemTable::new();
+        let (_, rx) = mpsc::channel(1);
+        let table = MemTable::new(rx);
         table.put(b"abc".to_vec(), b"def".to_vec()).await;
         table.put(b"rust".to_vec(), b"nice".to_vec()).await;
         table.put(b"cat".to_vec(), b"hoge".to_vec()).await;
