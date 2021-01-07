@@ -1,12 +1,15 @@
 use super::storage::PersistedFile;
 use super::table::SSTable;
+use crate::command::Command;
 use crate::format::InternalPair;
+use crate::Message;
 use std::cmp::Reverse;
 use std::collections::VecDeque;
 use std::fs;
 use std::io;
 use std::mem;
 use std::path::{Path, PathBuf};
+use tokio::sync::mpsc;
 
 /// Manage multiple SSTable instances.
 /// All operation to an SSTalbe is taken via this struct.
@@ -21,11 +24,16 @@ pub struct SSTableManager {
     /// Array of SSTables this struct manages.
     /// Front element is the newer.
     tables: VecDeque<SSTable>,
+    command_rx: mpsc::Receiver<Message>,
 }
 
 impl SSTableManager {
     /// Open existing SSTable files.
-    pub async fn new<P: AsRef<Path>>(directory: P, block_stride: usize) -> io::Result<Self> {
+    pub async fn new<P: AsRef<Path>>(
+        directory: P,
+        block_stride: usize,
+        command_rx: mpsc::Receiver<Message>,
+    ) -> io::Result<Self> {
         let mut table_directory = PathBuf::new();
         table_directory.push(directory);
 
@@ -42,7 +50,24 @@ impl SSTableManager {
             table_directory,
             block_stride,
             tables,
+            command_rx,
         })
+    }
+
+    pub async fn listen(&mut self) {
+        while let Some((command, tx)) = self.command_rx.recv().await {
+            if let Command::Get { key } = command {
+                let entry = self
+                    .get(&key)
+                    .await
+                    .unwrap()
+                    .map(|pair| pair.value)
+                    .flatten();
+                if let Err(_) = tx.send(entry).await {
+                    dbg!("The receiver dropped");
+                };
+            }
+        }
     }
 
     /// Create a new SSTable with given pairs.
@@ -155,7 +180,8 @@ mod tests {
         prepare_sstable_file("test_open_existing_files/table_1", &data2)?;
         prepare_sstable_file("test_open_existing_files/table_2", &data3)?;
 
-        let mut manager = SSTableManager::new(path, 3).await?;
+        let (_, rx) = mpsc::channel(1);
+        let mut manager = SSTableManager::new(path, 3, rx).await?;
         assert_eq!(
             InternalPair::new(b"abc00", Some(b"xyz")),
             manager.get(b"abc00").await?.unwrap()
@@ -175,7 +201,8 @@ mod tests {
     async fn get_pairs() -> io::Result<()> {
         let path = "test_get_create";
         let _ = std::fs::create_dir(path);
-        let mut manager = SSTableManager::new(path, 2).await?;
+        let (_, rx) = mpsc::channel(1);
+        let mut manager = SSTableManager::new(path, 2, rx).await?;
         let pairs1 = vec![
             InternalPair::new(b"abc00", Some(b"def")),
             InternalPair::new(b"abc01", Some(b"defg")),

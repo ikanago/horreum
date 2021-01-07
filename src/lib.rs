@@ -1,10 +1,18 @@
 mod command;
 mod error;
 mod format;
-pub mod horreum;
 pub mod http;
-mod memtable;
-mod sstable;
+pub mod memtable;
+pub mod sstable;
 
-pub use crate::horreum::Horreum;
-pub use http::serve;
+pub use crate::http::serve;
+pub use memtable::MemTable;
+pub use sstable::manager::SSTableManager;
+
+use command::Command;
+use tokio::sync::mpsc::Sender;
+
+/// Message sent to a store(`MemTable` or `SSTableManager`).
+/// This holds `mpsc::Sender` because the store have to send back response
+/// to sender of the `Message`.
+type Message = (Command, Sender<Option<Vec<u8>>>);

@@ -1,5 +1,6 @@
 use clap::{clap_app, crate_version};
-use horreum::{http, Horreum};
+use horreum::{http, MemTable, SSTableManager};
+use tokio::sync::mpsc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -21,7 +22,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let block_stride = matches.value_of("STRIDE").unwrap_or("100");
     let block_stride = block_stride.parse::<usize>().unwrap();
 
-    let db = Horreum::new(sstable_directory, block_stride).await?;
-    http::serve(&db, port).await?;
+    let (memtable_tx, memtable_rx) = mpsc::channel(32);
+    let (sstable_tx, sstable_rx) = mpsc::channel(32);
+    let mut memtable = MemTable::new(memtable_rx);
+    let mut manager = match SSTableManager::new(sstable_directory, block_stride, sstable_rx).await {
+        Ok(m) => m,
+        Err(err) => {
+            eprintln!("{}", err);
+            std::process::exit(1);
+        }
+    };
+    tokio::spawn(async move {
+        memtable.listen().await;
+    });
+    tokio::spawn(async move {
+        manager.listen().await;
+    });
+    http::serve(port, memtable_tx, sstable_tx).await?;
     Ok(())
 }

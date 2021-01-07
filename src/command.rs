@@ -3,7 +3,7 @@ use hyper::Method;
 use qstring::QString;
 
 /// Represents actions to key-value store and holds necessary data.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Command {
     Get { key: Vec<u8> },
     Put { key: Vec<u8>, value: Vec<u8> },
