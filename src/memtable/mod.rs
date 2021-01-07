@@ -9,16 +9,10 @@ use crate::Message;
 /// Imbound data is accumulated in `BTreeMap` this struct holds.
 /// `MemTable` records deletion histories because `SSTable` needs them.
 pub struct MemTable {
-    // Because this struct is planned to use in asynchronous process,
+    // Because `MemTable` receives asynchronous request,
     // a map of key and value is wrapped in `RwLock`.
-    inner: RwLock<BTreeMap<Vec<u8>, Entry>>,
+    inner: RwLock<BTreeMap<Vec<u8>, Option<Vec<u8>>>>,
     command_rx: mpsc::Receiver<Message>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Entry {
-    Value(Vec<u8>),
-    Deleted,
 }
 
 impl MemTable {
@@ -30,6 +24,7 @@ impl MemTable {
         }
     }
 
+    /// Listen to requests and send back results.
     pub async fn listen(&mut self) {
         while let Some((command, tx)) = self.command_rx.recv().await {
             let entry = self.apply(command).await;
@@ -39,7 +34,8 @@ impl MemTable {
         }
     }
 
-    pub async fn apply<'a>(&self, command: Command) -> Option<Entry> {
+    /// Extract contents of `command` and apply them.
+    pub async fn apply<'a>(&self, command: Command) -> Option<Vec<u8>> {
         match command {
             Command::Get { key } => self.get(&key).await,
             Command::Put { key, value } => self.put(key, value).await,
@@ -48,38 +44,31 @@ impl MemTable {
     }
 
     /// Get value corresponding to a given key.
-    /// If `MemTable` has a value for the key, return `Some(Value())`.
-    /// If `MemTable` has an entry for the key but it has deleted, return `Some(Deleted)`.
-    /// If `MemTable` has no entry for the key, return `None`.
-    pub async fn get(&self, key: &[u8]) -> Option<Entry> {
+    pub async fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
         let map = self.inner.read().await;
-        map.get(key).cloned()
+        map.get(key).cloned().flatten()
     }
 
     /// Create a new key-value entry.
-    pub async fn put(&self, key: Vec<u8>, value: Vec<u8>) -> Option<Entry> {
+    pub async fn put(&self, key: Vec<u8>, value: Vec<u8>) -> Option<Vec<u8>> {
         let mut map = self.inner.write().await;
-        map.insert(key, Entry::Value(value))
+        map.insert(key, Some(value)).flatten()
     }
 
     /// Mark value corresponding to a key as deleted.
     /// Return `true` if there was an entry to delete.
-    pub async fn delete(&self, key: &[u8]) -> Option<Entry> {
+    pub async fn delete(&self, key: &[u8]) -> Option<Vec<u8>> {
         let mut map = self.inner.write().await;
         // Check entry for the key to avoid mark a key which is not registered as `Deleted`.
-        if map.get(key).is_some() {
-            map.insert(key.to_vec(), Entry::Deleted)
-        } else {
-            None
-        }
+        map.insert(key.to_vec(), None).flatten()
     }
 
     pub async fn flush(&self) -> Vec<InternalPair> {
         let map = self.inner.read().await;
         map.iter()
             .map(|(key, entry)| match entry {
-                Entry::Value(value) => InternalPair::new(key, Some(value)),
-                Entry::Deleted => InternalPair::new(key, None),
+                Some(value) => InternalPair::new(key, Some(value)),
+                None => InternalPair::new(key, None),
             })
             .collect()
     }
@@ -96,14 +85,11 @@ mod tests {
         assert_eq!(None, table.put(b"abc".to_vec(), b"def".to_vec()).await);
         assert_eq!(None, table.put(b"xyz".to_vec(), b"xxx".to_vec()).await);
         assert_eq!(
-            Some(Entry::Value(b"xxx".to_vec())),
+            Some(b"xxx".to_vec()),
             table.put(b"xyz".to_vec(), b"qwerty".to_vec()).await
         );
-        assert_eq!(Some(Entry::Value(b"def".to_vec())), table.get(b"abc").await);
-        assert_eq!(
-            Some(Entry::Value(b"qwerty".to_vec())),
-            table.get(b"xyz").await
-        );
+        assert_eq!(Some(b"def".to_vec()), table.get(b"abc").await);
+        assert_eq!(Some(b"qwerty".to_vec()), table.get(b"xyz").await);
     }
 
     #[tokio::test]
@@ -113,13 +99,13 @@ mod tests {
         table.put(b"abc".to_vec(), b"def".to_vec()).await;
         table.put(b"xyz".to_vec(), b"xxx".to_vec()).await;
         assert_eq!(
-            Some(Entry::Value(b"def".to_vec())),
+            Some(b"def".to_vec()),
             table.delete(b"abc").await
         );
         assert_eq!(None, table.delete(b"abcdef").await);
-        assert_eq!(Some(Entry::Deleted), table.get(b"abc").await);
+        assert_eq!(None, table.get(b"abc").await);
         assert_eq!(None, table.get(b"111").await);
-        assert_eq!(Some(Entry::Value(b"xxx".to_vec())), table.get(b"xyz").await);
+        assert_eq!(Some(b"xxx".to_vec()), table.get(b"xyz").await);
     }
 
     #[tokio::test]

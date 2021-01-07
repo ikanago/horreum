@@ -1,5 +1,4 @@
 use crate::command::Command;
-use crate::memtable::Entry;
 use crate::Message;
 use hyper::server::Server;
 use hyper::{service, Body, Request, Response, StatusCode};
@@ -69,10 +68,7 @@ impl Handler {
         self.memtable_tx.send((command, tx)).await.unwrap();
         let entry = rx.recv().await.unwrap();
         match entry {
-            Some(entry) => match entry {
-                Entry::Value(value) => value,
-                Entry::Deleted => b"Deleted".to_vec(),
-            },
+            Some(value) => value,
             None => b"Entry not exist".to_vec(),
         }
     }
