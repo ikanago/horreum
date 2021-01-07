@@ -1,9 +1,8 @@
-use std::collections::BTreeMap;
-use tokio::sync::{mpsc, RwLock};
-
 use crate::command::Command;
 use crate::format::InternalPair;
 use crate::Message;
+use std::collections::BTreeMap;
+use tokio::sync::{mpsc, RwLock};
 
 /// `MemTable` is an in-memory key-value store.  
 /// Imbound data is accumulated in `BTreeMap` this struct holds.
@@ -98,10 +97,7 @@ mod tests {
         let table = MemTable::new(rx);
         table.put(b"abc".to_vec(), b"def".to_vec()).await;
         table.put(b"xyz".to_vec(), b"xxx".to_vec()).await;
-        assert_eq!(
-            Some(b"def".to_vec()),
-            table.delete(b"abc").await
-        );
+        assert_eq!(Some(b"def".to_vec()), table.delete(b"abc").await);
         assert_eq!(None, table.delete(b"abcdef").await);
         assert_eq!(None, table.get(b"abc").await);
         assert_eq!(None, table.get(b"111").await);

@@ -7,7 +7,7 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 pub struct InternalPair {
     pub(crate) key: Vec<u8>,
     /// If this pair is deleted, `value` is `None`.
-    value: Option<Vec<u8>>,
+    pub(crate) value: Option<Vec<u8>>,
 }
 
 impl InternalPair {

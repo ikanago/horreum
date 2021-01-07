@@ -7,10 +7,14 @@ use std::convert::Infallible;
 use std::net;
 use tokio::sync::mpsc;
 
-pub async fn serve(port: u16, memtable_tx: mpsc::Sender<Message>) -> Result<(), hyper::Error> {
+pub async fn serve(
+    port: u16,
+    memtable_tx: mpsc::Sender<Message>,
+    sstable_tx: mpsc::Sender<Message>,
+) -> Result<(), hyper::Error> {
     let addr = net::IpAddr::from([127, 0, 0, 1]);
     let addr = net::SocketAddr::new(addr, port);
-    let handler = Handler::new(memtable_tx);
+    let handler = Handler::new(memtable_tx, sstable_tx);
     let service = service::make_service_fn(move |_| {
         let handler = handler.clone();
         async move {
@@ -33,11 +37,15 @@ pub async fn serve(port: u16, memtable_tx: mpsc::Sender<Message>) -> Result<(), 
 #[derive(Clone)]
 pub struct Handler {
     memtable_tx: mpsc::Sender<Message>,
+    sstable_tx: mpsc::Sender<Message>,
 }
 
 impl Handler {
-    fn new(memtable_tx: mpsc::Sender<Message>) -> Self {
-        Self { memtable_tx }
+    fn new(memtable_tx: mpsc::Sender<Message>, sstable_tx: mpsc::Sender<Message>) -> Self {
+        Self {
+            memtable_tx,
+            sstable_tx,
+        }
     }
 
     async fn handle(&self, request: Request<Body>) -> Result<Response<Body>, Infallible> {
@@ -65,11 +73,21 @@ impl Handler {
 
     async fn apply(&self, command: Command) -> Vec<u8> {
         let (tx, mut rx) = mpsc::channel(1);
-        self.memtable_tx.send((command, tx)).await.unwrap();
+        self.memtable_tx.send((command.clone(), tx)).await.unwrap();
         let entry = rx.recv().await.unwrap();
         match entry {
             Some(value) => value,
-            None => b"Entry not exist".to_vec(),
+            None => {
+                if let Command::Get { .. } = command {
+                    let (tx, mut rx) = mpsc::channel(1);
+                    self.sstable_tx.send((command, tx)).await.unwrap();
+                    let value = rx.recv().await.unwrap();
+                    if value.is_some() {
+                        return value.unwrap();
+                    }
+                };
+                b"Entry not exist".to_vec()
+            }
         }
     }
 }
