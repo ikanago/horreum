@@ -1,5 +1,5 @@
 use clap::{clap_app, crate_version};
-use horreum::{http, MemTable, SSTableManager};
+use horreum::{serve, MemTable, SSTableManager};
 use tokio::sync::mpsc;
 
 #[tokio::main]
@@ -38,6 +38,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tokio::spawn(async move {
         manager.listen().await;
     });
-    http::serve(port, memtable_tx, sstable_tx).await?;
+    serve(port, memtable_tx, sstable_tx).await?;
     Ok(())
 }

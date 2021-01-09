@@ -1,3 +1,1 @@
-mod server;
-
-pub use server::serve;
+pub mod server;

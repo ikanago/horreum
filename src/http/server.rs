@@ -35,13 +35,16 @@ pub async fn serve(
 }
 
 #[derive(Clone)]
-pub struct Handler {
+pub(crate) struct Handler {
     memtable_tx: mpsc::Sender<Message>,
     sstable_tx: mpsc::Sender<Message>,
 }
 
 impl Handler {
-    fn new(memtable_tx: mpsc::Sender<Message>, sstable_tx: mpsc::Sender<Message>) -> Self {
+    pub(crate) fn new(
+        memtable_tx: mpsc::Sender<Message>,
+        sstable_tx: mpsc::Sender<Message>,
+    ) -> Self {
         Self {
             memtable_tx,
             sstable_tx,
@@ -64,30 +67,29 @@ impl Handler {
                     .unwrap())
             }
         };
-        let response = self.apply(command).await;
+        let response = self
+            .apply(command)
+            .await
+            .unwrap_or(b"Entry Not Found".to_vec());
         Ok(Response::builder()
             .status(StatusCode::OK)
             .body(Body::from(response))
             .unwrap())
     }
 
-    async fn apply(&self, command: Command) -> Vec<u8> {
+    pub(crate) async fn apply(&self, command: Command) -> Option<Vec<u8>> {
         let (tx, mut rx) = mpsc::channel(1);
         self.memtable_tx.send((command.clone(), tx)).await.unwrap();
         let entry = rx.recv().await.unwrap();
-        match entry {
-            Some(value) => value,
-            None => {
-                if let Command::Get { .. } = command {
-                    let (tx, mut rx) = mpsc::channel(1);
-                    self.sstable_tx.send((command, tx)).await.unwrap();
-                    let value = rx.recv().await.unwrap();
-                    if value.is_some() {
-                        return value.unwrap();
-                    }
-                };
-                b"Entry not exist".to_vec()
-            }
+        if entry.is_some() {
+            entry
+        } else if let Command::Get { .. } = command {
+            // If there is no entry for the key, search SSTables
+            let (tx, mut rx) = mpsc::channel(1);
+            self.sstable_tx.send((command, tx)).await.unwrap();
+            rx.recv().await.unwrap()
+        } else {
+            None
         }
     }
 }
