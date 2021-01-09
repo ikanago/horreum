@@ -35,13 +35,13 @@ pub async fn serve(
 }
 
 #[derive(Clone)]
-pub struct Handler {
+pub(crate) struct Handler {
     memtable_tx: mpsc::Sender<Message>,
     sstable_tx: mpsc::Sender<Message>,
 }
 
 impl Handler {
-    fn new(memtable_tx: mpsc::Sender<Message>, sstable_tx: mpsc::Sender<Message>) -> Self {
+    pub(crate) fn new(memtable_tx: mpsc::Sender<Message>, sstable_tx: mpsc::Sender<Message>) -> Self {
         Self {
             memtable_tx,
             sstable_tx,
@@ -71,7 +71,7 @@ impl Handler {
             .unwrap())
     }
 
-    async fn apply(&self, command: Command) -> Vec<u8> {
+    pub(crate) async fn apply(&self, command: Command) -> Vec<u8> {
         let (tx, mut rx) = mpsc::channel(1);
         self.memtable_tx.send((command.clone(), tx)).await.unwrap();
         let entry = rx.recv().await.unwrap();

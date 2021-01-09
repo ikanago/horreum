@@ -74,7 +74,7 @@ impl SSTableManager {
     pub async fn create(&mut self, pairs: Vec<InternalPair>) -> io::Result<()> {
         let table_path = self.new_table_path();
         let file = PersistedFile::new(table_path, &pairs).await?;
-        let table = SSTable::new(file, pairs, 3).unwrap();
+        let table = SSTable::new(file, pairs, self.block_stride).unwrap();
         self.tables.push_front(table);
         Ok(())
     }
@@ -212,9 +212,11 @@ mod tests {
             InternalPair::new(b"abc01", None),
         ];
         let pairs3 = vec![InternalPair::new(b"abc02", Some(b"def"))];
+        let pairs4 = vec![InternalPair::new(b"xxx", Some(b"42"))];
         manager.create(pairs1).await?;
         manager.create(pairs2).await?;
         manager.create(pairs3).await?;
+        manager.create(pairs4).await?;
         assert_eq!(
             InternalPair::new(b"abc00", Some(b"xyz")),
             manager.get(b"abc00").await?.unwrap()
@@ -226,6 +228,10 @@ mod tests {
         assert_eq!(
             InternalPair::new(b"abc02", Some(b"def")),
             manager.get(b"abc02").await?.unwrap()
+        );
+        assert_eq!(
+            InternalPair::new(b"xxx", Some(b"42")),
+            manager.get(b"xxx").await?.unwrap()
         );
         Ok(())
     }
