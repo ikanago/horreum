@@ -24,6 +24,7 @@ pub struct SSTableManager {
     /// Array of SSTables this struct manages.
     /// Front element is the newer.
     tables: VecDeque<SSTable>,
+    /// Receiver to receive command.
     command_rx: mpsc::Receiver<Message>,
 }
 
@@ -54,6 +55,15 @@ impl SSTableManager {
         })
     }
 
+    /// Create a new SSTable with given pairs.
+    pub async fn create(&mut self, pairs: Vec<InternalPair>) -> io::Result<()> {
+        let table_path = self.new_table_path();
+        let file = PersistedFile::new(table_path, &pairs).await?;
+        let table = SSTable::new(file, pairs, self.block_stride).unwrap();
+        self.tables.push_front(table);
+        Ok(())
+    }
+
     pub async fn listen(&mut self) {
         while let Some((command, tx)) = self.command_rx.recv().await {
             if let Command::Get { key } = command {
@@ -68,15 +78,6 @@ impl SSTableManager {
                 };
             }
         }
-    }
-
-    /// Create a new SSTable with given pairs.
-    pub async fn create(&mut self, pairs: Vec<InternalPair>) -> io::Result<()> {
-        let table_path = self.new_table_path();
-        let file = PersistedFile::new(table_path, &pairs).await?;
-        let table = SSTable::new(file, pairs, self.block_stride).unwrap();
-        self.tables.push_front(table);
-        Ok(())
     }
 
     /// Generate a path name for a new SSTable.
@@ -164,21 +165,19 @@ mod tests {
     async fn open_existing_files() -> io::Result<()> {
         let path = "test_open_existing_files";
         let _ = std::fs::create_dir(path);
-        let pairs1 = vec![
+        let data0 = InternalPair::serialize_flatten(&vec![
             InternalPair::new(b"abc00", Some(b"def")),
             InternalPair::new(b"abc01", Some(b"defg")),
-        ];
-        let pairs2 = vec![
+        ]);
+        let data1 = InternalPair::serialize_flatten(&vec![
             InternalPair::new(b"abc00", Some(b"xyz")),
             InternalPair::new(b"abc01", None),
-        ];
-        let pairs3 = vec![InternalPair::new(b"abc02", Some(b"def"))];
-        let data1 = InternalPair::serialize_flatten(&pairs1);
-        let data2 = InternalPair::serialize_flatten(&pairs2);
-        let data3 = InternalPair::serialize_flatten(&pairs3);
-        prepare_sstable_file("test_open_existing_files/table_0", &data1)?;
-        prepare_sstable_file("test_open_existing_files/table_1", &data2)?;
-        prepare_sstable_file("test_open_existing_files/table_2", &data3)?;
+        ]);
+        let data2 =
+            InternalPair::serialize_flatten(&vec![InternalPair::new(b"abc02", Some(b"def"))]);
+        prepare_sstable_file("test_open_existing_files/table_0", &data0)?;
+        prepare_sstable_file("test_open_existing_files/table_1", &data1)?;
+        prepare_sstable_file("test_open_existing_files/table_2", &data2)?;
 
         let (_, rx) = mpsc::channel(1);
         let mut manager = SSTableManager::new(path, 3, rx).await?;
@@ -203,20 +202,25 @@ mod tests {
         let _ = std::fs::create_dir(path);
         let (_, rx) = mpsc::channel(1);
         let mut manager = SSTableManager::new(path, 2, rx).await?;
-        let pairs1 = vec![
-            InternalPair::new(b"abc00", Some(b"def")),
-            InternalPair::new(b"abc01", Some(b"defg")),
-        ];
-        let pairs2 = vec![
-            InternalPair::new(b"abc00", Some(b"xyz")),
-            InternalPair::new(b"abc01", None),
-        ];
-        let pairs3 = vec![InternalPair::new(b"abc02", Some(b"def"))];
-        let pairs4 = vec![InternalPair::new(b"xxx", Some(b"42"))];
-        manager.create(pairs1).await?;
-        manager.create(pairs2).await?;
-        manager.create(pairs3).await?;
-        manager.create(pairs4).await?;
+        manager
+            .create(vec![
+                InternalPair::new(b"abc00", Some(b"def")),
+                InternalPair::new(b"abc01", Some(b"defg")),
+            ])
+            .await?;
+        manager
+            .create(vec![
+                InternalPair::new(b"abc00", Some(b"xyz")),
+                InternalPair::new(b"abc01", None),
+            ])
+            .await?;
+        manager
+            .create(vec![InternalPair::new(b"abc02", Some(b"def"))])
+            .await?;
+        manager
+            .create(vec![InternalPair::new(b"xxx", Some(b"42"))])
+            .await?;
+
         assert_eq!(
             InternalPair::new(b"abc00", Some(b"xyz")),
             manager.get(b"abc00").await?.unwrap()
@@ -238,20 +242,24 @@ mod tests {
 
     #[test]
     fn compaction() {
-        let table1 = vec![
-            InternalPair::new(b"abc00", Some(b"def")),
-            InternalPair::new(b"abc01", Some(b"defg")),
-            InternalPair::new(b"abc02", Some(b"xyz")),
-            InternalPair::new(b"abc03", Some(b"defg")),
-        ];
-        let table2 = vec![
-            InternalPair::new(b"abc00", Some(b"xyz")),
-            InternalPair::new(b"abc01", None),
-        ];
-        let table3 = vec![
-            InternalPair::new(b"abc02", Some(b"def")),
-            InternalPair::new(b"abc04", Some(b"hoge")),
-            InternalPair::new(b"abc05", None),
+        let tables = vec![
+            // Higher priority for reference
+            vec![
+                InternalPair::new(b"abc02", Some(b"def")),
+                InternalPair::new(b"abc04", Some(b"hoge")),
+                InternalPair::new(b"abc05", None),
+            ],
+            vec![
+                InternalPair::new(b"abc00", Some(b"xyz")),
+                InternalPair::new(b"abc01", None),
+            ],
+            // lower priority for reference
+            vec![
+                InternalPair::new(b"abc00", Some(b"def")),
+                InternalPair::new(b"abc01", Some(b"defg")),
+                InternalPair::new(b"abc02", Some(b"xyz")),
+                InternalPair::new(b"abc03", Some(b"defg")),
+            ],
         ];
         let expected = vec![
             InternalPair::new(b"abc00", Some(b"xyz")),
@@ -261,7 +269,6 @@ mod tests {
             InternalPair::new(b"abc04", Some(b"hoge")),
             InternalPair::new(b"abc05", None),
         ];
-        let tables = vec![table3, table2, table1];
         let table_iterators = tables.into_iter().map(|table| table.into_iter()).collect();
         assert_eq!(expected, SSTableManager::compact_inner(table_iterators));
     }

@@ -65,6 +65,7 @@ mod tests {
                     key: b"abc".to_vec()
                 })
                 .await
+                .unwrap()
         );
         // Exists the same entry in SSTable, but read from MemTable
         assert_eq!(
@@ -74,6 +75,7 @@ mod tests {
                     key: b"xxx".to_vec()
                 })
                 .await
+                .unwrap()
         );
         // Simply read from SSTable
         assert_eq!(
@@ -83,6 +85,7 @@ mod tests {
                     key: b"rust".to_vec(),
                 })
                 .await
+                .unwrap()
         );
         Ok(())
     }
