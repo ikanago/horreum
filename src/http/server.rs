@@ -2,11 +2,13 @@ use crate::command::Command;
 use crate::Message;
 use hyper::server::Server;
 use hyper::{service, Body, Request, Response, StatusCode};
-use log::warn;
+use log::{debug, info, warn};
 use std::convert::Infallible;
 use std::net;
 use tokio::sync::mpsc;
 
+/// Start running server.
+/// Clone handler for each request and spawn job for it.
 pub async fn serve(
     port: u16,
     memtable_tx: mpsc::Sender<Message>,
@@ -19,21 +21,22 @@ pub async fn serve(
         let handler = handler.clone();
         async move {
             Ok::<_, Infallible>(service::service_fn(move |req| {
-                dbg!(&req);
+                debug!("{:?}", &req);
                 let handler = handler.clone();
                 async move { handler.handle(req).await }
             }))
         }
     });
 
-    let server = Server::bind(&addr).serve(service);
-    if let Err(e) = server.await {
+    info!("Server has started running at port {}", port);
+    if let Err(e) = Server::bind(&addr).serve(service).await {
         warn!("{}", e);
         return Err(e);
     }
     Ok(())
 }
 
+/// Structure to handle command and communicate with `MemTable` and `SSTableManager`.
 #[derive(Clone)]
 pub(crate) struct Handler {
     memtable_tx: mpsc::Sender<Message>,
@@ -51,6 +54,7 @@ impl Handler {
         }
     }
 
+    /// Apply a command parsed from request to the stores.
     async fn handle(&self, request: Request<Body>) -> Result<Response<Body>, Infallible> {
         if request.uri().path() != "/" {
             return Ok(Response::builder()
@@ -77,6 +81,7 @@ impl Handler {
             .unwrap())
     }
 
+    /// Communicate with the stores to apply a command
     pub(crate) async fn apply(&self, command: Command) -> Option<Vec<u8>> {
         let (tx, mut rx) = mpsc::channel(1);
         self.memtable_tx.send((command.clone(), tx)).await.unwrap();

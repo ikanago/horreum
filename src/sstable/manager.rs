@@ -19,11 +19,14 @@ pub struct SSTableManager {
     /// Files in the directory is sorted by thier name(like table_0, table_1, table_2...).
     /// File with bigger number at the end of the file name is newer one.
     table_directory: PathBuf,
+
     /// Every `block_stride` pair, `SSTable` creates an index entry.
     block_stride: usize,
+
     /// Array of SSTables this struct manages.
     /// Front element is the newer.
     tables: VecDeque<SSTable>,
+
     /// Receiver to receive command.
     command_rx: mpsc::Receiver<Message>,
 }

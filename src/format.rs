@@ -2,7 +2,7 @@ use bincode::{deserialize, serialize, Error};
 use std::io::Cursor;
 use tokio::io::{AsyncRead, AsyncReadExt};
 
-/// Internal representation of a key-value pair.
+/// Internal representation of a key-value pair in SSTable.
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct InternalPair {
     pub(crate) key: Vec<u8>,

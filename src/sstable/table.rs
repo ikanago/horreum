@@ -4,11 +4,12 @@ use crate::format::InternalPair;
 use std::io;
 use std::path::Path;
 
-/// Represents a SSTable.
+/// Represents an SSTable.
 #[derive(Debug)]
 pub struct SSTable {
     /// API to access an SSTable file.
     pub(crate) file: PersistedFile,
+
     /// Stores pairs of key and position to start read the key from the file.
     pub(crate) index: Index,
 }

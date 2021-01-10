@@ -4,10 +4,13 @@ use thiserror::Error;
 pub enum Error {
     #[error("Key and value not specified")]
     EmptyQuery,
+
     #[error("Key not specified")]
     LacksKey,
+
     #[error("Value not specified")]
     LacksValue,
+
     #[error("Invalid HTTP method")]
     InvalidMethod,
 }

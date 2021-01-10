@@ -11,6 +11,7 @@ pub struct MemTable {
     // Because `MemTable` receives asynchronous request,
     // a map of key and value is wrapped in `RwLock`.
     inner: RwLock<BTreeMap<Vec<u8>, Option<Vec<u8>>>>,
+
     /// Receiver to receive command.
     command_rx: mpsc::Receiver<Message>,
 }

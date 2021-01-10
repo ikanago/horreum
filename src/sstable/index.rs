@@ -6,8 +6,10 @@ use crate::format::InternalPair;
 pub struct Block {
     /// First key of the block.
     key: Vec<u8>,
+
     /// Block's position at a disk.
     position: usize,
+
     /// Length of the block.
     length: usize,
 }
