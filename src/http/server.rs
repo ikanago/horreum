@@ -2,7 +2,7 @@ use crate::command::Command;
 use crate::Message;
 use hyper::server::Server;
 use hyper::{service, Body, Request, Response, StatusCode};
-use log::warn;
+use log::{debug, info, warn};
 use std::convert::Infallible;
 use std::net;
 use tokio::sync::mpsc;
@@ -19,13 +19,14 @@ pub async fn serve(
         let handler = handler.clone();
         async move {
             Ok::<_, Infallible>(service::service_fn(move |req| {
-                dbg!(&req);
+                debug!("{:?}", &req);
                 let handler = handler.clone();
                 async move { handler.handle(req).await }
             }))
         }
     });
 
+    info!("Server has started running at port {}", port);
     let server = Server::bind(&addr).serve(service);
     if let Err(e) = server.await {
         warn!("{}", e);

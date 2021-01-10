@@ -4,6 +4,8 @@ use tokio::sync::mpsc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    env_logger::init();
+
     let (memtable_tx, memtable_rx) = mpsc::channel(32);
     let (sstable_tx, sstable_rx) = mpsc::channel(32);
     let mut memtable = MemTable::new(memtable_rx);
