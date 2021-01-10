@@ -7,6 +7,8 @@ use std::convert::Infallible;
 use std::net;
 use tokio::sync::mpsc;
 
+/// Start running server.
+/// Clone handler for each request and spawn job for it.
 pub async fn serve(
     port: u16,
     memtable_tx: mpsc::Sender<Message>,
@@ -27,14 +29,14 @@ pub async fn serve(
     });
 
     info!("Server has started running at port {}", port);
-    let server = Server::bind(&addr).serve(service);
-    if let Err(e) = server.await {
+    if let Err(e) = Server::bind(&addr).serve(service).await {
         warn!("{}", e);
         return Err(e);
     }
     Ok(())
 }
 
+/// Structure to handle command and communicate with `MemTable` and `SSTableManager`.
 #[derive(Clone)]
 pub(crate) struct Handler {
     memtable_tx: mpsc::Sender<Message>,
@@ -52,6 +54,7 @@ impl Handler {
         }
     }
 
+    /// Apply a command parsed from request to the stores.
     async fn handle(&self, request: Request<Body>) -> Result<Response<Body>, Infallible> {
         if request.uri().path() != "/" {
             return Ok(Response::builder()
@@ -78,6 +81,7 @@ impl Handler {
             .unwrap())
     }
 
+    /// Communicate with the stores to apply a command
     pub(crate) async fn apply(&self, command: Command) -> Option<Vec<u8>> {
         let (tx, mut rx) = mpsc::channel(1);
         self.memtable_tx.send((command.clone(), tx)).await.unwrap();

@@ -1,8 +1,13 @@
 use std::path::PathBuf;
 use structopt::StructOpt;
 
-/// Structure for SSTable configuration.
+/// Structure for app configuration.
 #[derive(Debug, StructOpt)]
+#[structopt(
+    name = "horreum",
+    author = "ikanago",
+    about = "Persistent key-value store."
+)]
 pub struct Config {
     /// Port number server listens to.
     #[structopt(

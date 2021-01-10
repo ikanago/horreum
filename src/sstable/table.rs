@@ -4,7 +4,7 @@ use crate::format::InternalPair;
 use std::io;
 use std::path::Path;
 
-/// Represents a SSTable.
+/// Represents an SSTable.
 #[derive(Debug)]
 pub struct SSTable {
     /// API to access an SSTable file.
