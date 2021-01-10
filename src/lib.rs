@@ -1,10 +1,12 @@
 mod command;
+mod config;
 mod error;
 mod format;
 pub mod http;
 pub mod memtable;
 pub mod sstable;
 
+pub use crate::config::Config;
 pub use crate::http::server::serve;
 pub use memtable::MemTable;
 pub use sstable::manager::SSTableManager;
@@ -29,10 +31,10 @@ mod tests {
         let (memtable_tx, memtable_rx) = mpsc::channel(1);
         let mut memtable = MemTable::new(memtable_rx);
 
-        let path = "test_put_and_get";
-        let _ = std::fs::create_dir(path);
+        let directory = "test_put_and_get";
+        let _ = std::fs::create_dir(directory);
         let (sstable_tx, sstable_rx) = mpsc::channel(1);
-        let mut manager = SSTableManager::new(path, 3, sstable_rx).await?;
+        let mut manager = SSTableManager::new(directory, 3, sstable_rx).await?;
         manager
             .create(vec![
                 InternalPair::new(b"rust", Some(b"wonderful")),

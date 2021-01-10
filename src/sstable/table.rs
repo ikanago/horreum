@@ -9,6 +9,7 @@ use std::path::Path;
 pub struct SSTable {
     /// API to access an SSTable file.
     pub(crate) file: PersistedFile,
+
     /// Stores pairs of key and position to start read the key from the file.
     pub(crate) index: Index,
 }
