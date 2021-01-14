@@ -6,13 +6,14 @@ use log::{debug, info, warn};
 use std::convert::Infallible;
 use std::net;
 use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 
 /// Start running server.
 /// Clone handler for each request and spawn job for it.
 pub async fn serve(
     port: u16,
     memtable_tx: mpsc::Sender<Message>,
-    sstable_tx: mpsc::Sender<Message>,
+    sstable_tx: crossbeam_channel::Sender<Message>,
 ) -> Result<(), hyper::Error> {
     let addr = net::IpAddr::from([127, 0, 0, 1]);
     let addr = net::SocketAddr::new(addr, port);
@@ -40,13 +41,13 @@ pub async fn serve(
 #[derive(Clone)]
 pub(crate) struct Handler {
     memtable_tx: mpsc::Sender<Message>,
-    sstable_tx: mpsc::Sender<Message>,
+    sstable_tx: crossbeam_channel::Sender<Message>,
 }
 
 impl Handler {
     pub(crate) fn new(
         memtable_tx: mpsc::Sender<Message>,
-        sstable_tx: mpsc::Sender<Message>,
+        sstable_tx: crossbeam_channel::Sender<Message>,
     ) -> Self {
         Self {
             memtable_tx,
@@ -83,16 +84,20 @@ impl Handler {
 
     /// Communicate with the stores to apply a command
     pub(crate) async fn apply(&self, command: Command) -> Option<Vec<u8>> {
-        let (tx, mut rx) = mpsc::channel(1);
+        let (tx, rx) = oneshot::channel();
         self.memtable_tx.send((command.clone(), tx)).await.unwrap();
-        let entry = rx.recv().await.unwrap();
+        let entry = rx.await.unwrap();
         if entry.is_some() {
             entry
         } else if let Command::Get { .. } = command {
             // If there is no entry for the key, search SSTables
-            let (tx, mut rx) = mpsc::channel(1);
-            self.sstable_tx.send((command, tx)).await.unwrap();
-            rx.recv().await.unwrap()
+            let (tx, rx) = oneshot::channel();
+            self.sstable_tx.send((command, tx)).unwrap();
+            info!("send command");
+            // std::thread::sleep(std::time::Duration::from_millis(1));
+            let res = rx.await.unwrap();
+            info!("reached");
+            res
         } else {
             None
         }

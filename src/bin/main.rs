@@ -1,14 +1,15 @@
 use horreum::{serve, Config, MemTable, SSTableManager};
 use structopt::StructOpt;
 use tokio::sync::mpsc;
+use crossbeam_channel::unbounded;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
     let (memtable_tx, memtable_rx) = mpsc::channel(32);
-    let (sstable_tx, sstable_rx) = mpsc::channel(32);
-    let (flushing_tx, flushing_rx) = mpsc::channel(4);
+    let (sstable_tx, sstable_rx) = unbounded();
+    let (flushing_tx, flushing_rx) = unbounded();
     let config = Config::from_args();
     dbg!(&config);
     let mut memtable = MemTable::new(config.memtable_limit, memtable_rx, flushing_tx);

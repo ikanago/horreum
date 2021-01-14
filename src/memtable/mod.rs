@@ -1,7 +1,7 @@
 use crate::command::Command;
 use crate::format::InternalPair;
 use crate::Message;
-use log::warn;
+use log::{debug, warn};
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::{mpsc, RwLock};
@@ -26,7 +26,7 @@ pub struct MemTable {
     command_rx: mpsc::Receiver<Message>,
 
     /// Sender to send flushed data to `SSTableManager`.
-    flushing_tx: mpsc::Sender<Vec<InternalPair>>,
+    flushing_tx: crossbeam_channel::Sender<Vec<InternalPair>>,
 }
 
 impl MemTable {
@@ -34,7 +34,7 @@ impl MemTable {
     pub fn new(
         size_limit: usize,
         command_rx: mpsc::Receiver<Message>,
-        flushing_tx: mpsc::Sender<Vec<InternalPair>>,
+        flushing_tx: crossbeam_channel::Sender<Vec<InternalPair>>,
     ) -> Self {
         Self {
             inner: RwLock::new(BTreeMap::new()),
@@ -49,8 +49,8 @@ impl MemTable {
     pub async fn listen(&mut self) {
         while let Some((command, tx)) = self.command_rx.recv().await {
             let entry = self.apply(command).await;
-            if let Err(_) = tx.send(entry).await {
-                warn!("The receiver dropped");
+            if let Err(_) = tx.send(entry) {
+                warn!("The receiver already dropped");
             };
         }
     }
@@ -75,10 +75,13 @@ impl MemTable {
         let mut map = self.inner.write().await;
         self.actual_size.fetch_add(key.len() + value.len(), Ordering::Release);
         let result = map.insert(key, Some(value)).flatten();
+        // Drop lock here to acquire lock in `flush()` which may be called after.
         drop(map);
 
+        debug!("{}", self.actual_size.load(Ordering::Acquire));
         if self.actual_size.load(Ordering::Acquire) > self.size_limit {
             self.flush().await;
+            self.actual_size.store(0, Ordering::Release);
         }
         result
     }
@@ -106,22 +109,26 @@ impl MemTable {
                 None => InternalPair::new(key, None),
             })
             .collect();
-        if let Err(_) = self.flushing_tx.send(pairs).await {
+        if let Err(_) = self.flushing_tx.send(pairs) {
             warn!("The receiver dropped");
         }
+
+        let mut map = map;
+        map.clear();
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crossbeam_channel::unbounded;
 
     const MEMTABLE_SIZE: usize = 128;
 
     #[tokio::test]
     async fn put_and_get() {
         let (_, rx) = mpsc::channel(1);
-        let (tx, _) = mpsc::channel(1);
+        let (tx, _) = unbounded();
         let table = MemTable::new(MEMTABLE_SIZE, rx, tx);
         assert_eq!(None, table.put(b"abc".to_vec(), b"def".to_vec()).await);
         assert_eq!(None, table.put(b"xyz".to_vec(), b"xxx".to_vec()).await);
@@ -136,7 +143,7 @@ mod tests {
     #[tokio::test]
     async fn delete() {
         let (_, rx) = mpsc::channel(1);
-        let (tx, _) = mpsc::channel(1);
+        let (tx, _) = unbounded();
         let table = MemTable::new(MEMTABLE_SIZE, rx, tx);
         table.put(b"abc".to_vec(), b"def".to_vec()).await;
         table.put(b"xyz".to_vec(), b"xxx".to_vec()).await;
@@ -150,7 +157,7 @@ mod tests {
     #[tokio::test]
     async fn delete_non_existing() {
         let (_, rx) = mpsc::channel(1);
-        let (tx, _) = mpsc::channel(1);
+        let (tx, _) = unbounded();
         let table = MemTable::new(MEMTABLE_SIZE, rx, tx);
         assert_eq!(None, table.delete(b"abc").await);
         assert_eq!(None, table.get(b"abc").await);
