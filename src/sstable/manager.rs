@@ -3,6 +3,7 @@ use super::table::SSTable;
 use crate::command::Command;
 use crate::format::InternalPair;
 use crate::Message;
+use log::warn;
 use std::cmp::Reverse;
 use std::collections::VecDeque;
 use std::fs;
@@ -29,6 +30,9 @@ pub struct SSTableManager {
 
     /// Receiver to receive command.
     command_rx: mpsc::Receiver<Message>,
+
+    /// Receiver to receive flushed data.
+    flushing_rx: mpsc::Receiver<Vec<InternalPair>>,
 }
 
 impl SSTableManager {
@@ -37,6 +41,7 @@ impl SSTableManager {
         directory: P,
         block_stride: usize,
         command_rx: mpsc::Receiver<Message>,
+        flushing_rx: mpsc::Receiver<Vec<InternalPair>>,
     ) -> io::Result<Self> {
         let mut table_directory = PathBuf::new();
         table_directory.push(directory);
@@ -55,6 +60,7 @@ impl SSTableManager {
             block_stride,
             tables,
             command_rx,
+            flushing_rx,
         })
     }
 
@@ -68,17 +74,25 @@ impl SSTableManager {
     }
 
     pub async fn listen(&mut self) {
-        while let Some((command, tx)) = self.command_rx.recv().await {
-            if let Command::Get { key } = command {
-                let entry = self
-                    .get(&key)
-                    .await
-                    .unwrap()
-                    .map(|pair| pair.value)
-                    .flatten();
-                if let Err(_) = tx.send(entry).await {
-                    dbg!("The receiver dropped");
-                };
+        loop {
+            if let Some((command, tx)) = self.command_rx.recv().await {
+                if let Command::Get { key } = command {
+                    let entry = self
+                        .get(&key)
+                        .await
+                        .unwrap()
+                        .map(|pair| pair.value)
+                        .flatten();
+                    if let Err(_) = tx.send(entry).await {
+                        dbg!("The receiver dropped");
+                    }
+                }
+            }
+            if let Some(pairs) = self.flushing_rx.recv().await {
+                dbg!("reached");
+                if let Err(err) = self.create(pairs).await {
+                    warn!("{}", err);
+                }
             }
         }
     }
@@ -182,8 +196,9 @@ mod tests {
         prepare_sstable_file("test_open_existing_files/table_1", &data1)?;
         prepare_sstable_file("test_open_existing_files/table_2", &data2)?;
 
-        let (_, rx) = mpsc::channel(1);
-        let mut manager = SSTableManager::new(path, 3, rx).await?;
+        let (_, crx) = mpsc::channel(1);
+        let (_, frx) = mpsc::channel(1);
+        let mut manager = SSTableManager::new(path, 2, crx, frx).await?;
         assert_eq!(
             InternalPair::new(b"abc00", Some(b"xyz")),
             manager.get(b"abc00").await?.unwrap()
@@ -203,8 +218,9 @@ mod tests {
     async fn get_pairs() -> io::Result<()> {
         let path = "test_get_create";
         let _ = std::fs::create_dir(path);
-        let (_, rx) = mpsc::channel(1);
-        let mut manager = SSTableManager::new(path, 2, rx).await?;
+        let (_, crx) = mpsc::channel(1);
+        let (_, frx) = mpsc::channel(1);
+        let mut manager = SSTableManager::new(path, 2, crx, frx).await?;
         manager
             .create(vec![
                 InternalPair::new(b"abc00", Some(b"def")),

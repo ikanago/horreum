@@ -8,16 +8,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (memtable_tx, memtable_rx) = mpsc::channel(32);
     let (sstable_tx, sstable_rx) = mpsc::channel(32);
-    let mut memtable = MemTable::new(memtable_rx);
+    let (flushing_tx, flushing_rx) = mpsc::channel(4);
     let config = Config::from_args();
-    let mut manager =
-        match SSTableManager::new(config.directory, config.block_stride, sstable_rx).await {
-            Ok(m) => m,
-            Err(err) => {
-                eprintln!("{}", err);
-                std::process::exit(1);
-            }
-        };
+    dbg!(&config);
+    let mut memtable = MemTable::new(config.memtable_limit, memtable_rx, flushing_tx);
+    let mut manager = match SSTableManager::new(
+        config.directory,
+        config.block_stride,
+        sstable_rx,
+        flushing_rx,
+    )
+    .await
+    {
+        Ok(m) => m,
+        Err(err) => {
+            eprintln!("{}", err);
+            std::process::exit(1);
+        }
+    };
 
     tokio::spawn(async move { memtable.listen().await });
     tokio::spawn(async move { manager.listen().await });

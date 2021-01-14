@@ -26,15 +26,18 @@ mod tests {
     use crate::http::server::Handler;
     use std::io;
 
+    const MEMTABLE_SIZE: usize = 128;
+
     #[tokio::test]
     async fn put_and_get_integrated() -> io::Result<()> {
+        let (flushing_tx, flushing_rx) = mpsc::channel(1);
         let (memtable_tx, memtable_rx) = mpsc::channel(1);
-        let mut memtable = MemTable::new(memtable_rx);
+        let mut memtable = MemTable::new(MEMTABLE_SIZE, memtable_rx, flushing_tx);
 
         let directory = "test_put_and_get";
         let _ = std::fs::create_dir(directory);
         let (sstable_tx, sstable_rx) = mpsc::channel(1);
-        let mut manager = SSTableManager::new(directory, 3, sstable_rx).await?;
+        let mut manager = SSTableManager::new(directory, 3, sstable_rx, flushing_rx).await?;
         manager
             .create(vec![
                 InternalPair::new(b"rust", Some(b"wonderful")),
