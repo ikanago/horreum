@@ -3,14 +3,14 @@ use super::table::SSTable;
 use crate::command::Command;
 use crate::format::InternalPair;
 use crate::Message;
-use crossbeam_channel::TryRecvError;
-use log::{info, warn};
+use log::warn;
 use std::cmp::Reverse;
 use std::collections::VecDeque;
 use std::fs;
 use std::io;
 use std::mem;
 use std::path::{Path, PathBuf};
+use tokio::sync::mpsc;
 
 /// Manage multiple SSTable instances.
 /// All operation to an SSTalbe is taken via this struct.
@@ -29,10 +29,7 @@ pub struct SSTableManager {
     tables: VecDeque<SSTable>,
 
     /// Receiver to receive command.
-    command_rx: crossbeam_channel::Receiver<Message>,
-
-    /// Receiver to receive flushed data.
-    flushing_rx: crossbeam_channel::Receiver<Vec<InternalPair>>,
+    command_rx: mpsc::Receiver<Message>,
 }
 
 impl SSTableManager {
@@ -40,8 +37,7 @@ impl SSTableManager {
     pub async fn new<P: AsRef<Path>>(
         directory: P,
         block_stride: usize,
-        command_rx: crossbeam_channel::Receiver<Message>,
-        flushing_rx: crossbeam_channel::Receiver<Vec<InternalPair>>,
+        command_rx: mpsc::Receiver<Message>,
     ) -> io::Result<Self> {
         let mut table_directory = PathBuf::new();
         table_directory.push(directory);
@@ -60,7 +56,6 @@ impl SSTableManager {
             block_stride,
             tables,
             command_rx,
-            flushing_rx,
         })
     }
 
@@ -75,9 +70,9 @@ impl SSTableManager {
 
     pub async fn listen(&mut self) {
         loop {
-            match self.command_rx.try_recv() {
-                Ok((command, tx)) => {
-                    if let Command::Get { key } = command {
+            match self.command_rx.recv().await {
+                Some((command, tx)) => match command {
+                    Command::Get { key } => {
                         let entry = self
                             .get(&key)
                             .await
@@ -87,21 +82,19 @@ impl SSTableManager {
                         if let Err(_) = tx.send(entry) {
                             warn!("The receiver already dropped");
                         }
-                        info!("send back");
                     }
-                }
-                Err(TryRecvError::Disconnected) => warn!("The channel disconnected"),
-                _ => (),
-            }
-
-            match self.flushing_rx.try_recv() {
-                Ok(pairs) => {
-                    if let Err(err) = self.create(pairs).await {
-                        warn!("{}", err);
+                    Command::Flush { pairs } => {
+                        if let Err(err) = self.create(pairs).await {
+                            warn!("{}", err);
+                        }
+                        // Just notify flush completion.
+                        if let Err(_) = tx.send(None) {
+                            warn!("The receiver already dropped");
+                        }
                     }
-                }
-                Err(TryRecvError::Disconnected) => warn!("The channel disconnected"),
-                _ => (),
+                    _ => (),
+                },
+                None => warn!("The channel disconnected"),
             }
         }
     }
@@ -186,7 +179,6 @@ impl SSTableManager {
 mod tests {
     use super::*;
     use crate::sstable::tests::*;
-    use crossbeam_channel::unbounded;
 
     #[tokio::test]
     async fn open_existing_files() -> io::Result<()> {
@@ -206,9 +198,8 @@ mod tests {
         prepare_sstable_file("test_open_existing_files/table_1", &data1)?;
         prepare_sstable_file("test_open_existing_files/table_2", &data2)?;
 
-        let (_, crx) = unbounded();
-        let (_, frx) = unbounded();
-        let mut manager = SSTableManager::new(path, 2, crx, frx).await?;
+        let (_, crx) = mpsc::channel(4);
+        let mut manager = SSTableManager::new(path, 2, crx).await?;
         assert_eq!(
             InternalPair::new(b"abc00", Some(b"xyz")),
             manager.get(b"abc00").await?.unwrap()
@@ -228,9 +219,8 @@ mod tests {
     async fn get_pairs() -> io::Result<()> {
         let path = "test_get_create";
         let _ = std::fs::create_dir(path);
-        let (_, crx) = unbounded();
-        let (_, frx) = unbounded();
-        let mut manager = SSTableManager::new(path, 2, crx, frx).await?;
+        let (_, crx) = mpsc::channel(4);
+        let mut manager = SSTableManager::new(path, 2, crx).await?;
         manager
             .create(vec![
                 InternalPair::new(b"abc00", Some(b"def")),

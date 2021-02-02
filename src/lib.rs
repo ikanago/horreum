@@ -25,7 +25,6 @@ mod tests {
     use crate::format::InternalPair;
     use crate::http::server::Handler;
     use std::io;
-    use crossbeam_channel::unbounded;
     use tokio::sync::mpsc;
 
     const MEMTABLE_SIZE: usize = 128;
@@ -33,13 +32,12 @@ mod tests {
     #[tokio::test]
     async fn put_and_get_integrated() -> io::Result<()> {
         let (memtable_tx, memtable_rx) = mpsc::channel(1);
-        let (flushing_tx, flushing_rx) = unbounded();
-        let mut memtable = MemTable::new(MEMTABLE_SIZE, memtable_rx, flushing_tx);
+        let (sstable_tx, sstable_rx) = mpsc::channel(32);
+        let mut memtable = MemTable::new(MEMTABLE_SIZE, memtable_rx, sstable_tx.clone());
 
         let directory = "test_put_and_get";
         let _ = std::fs::create_dir(directory);
-        let (sstable_tx, sstable_rx) = unbounded();
-        let mut manager = SSTableManager::new(directory, 3, sstable_rx, flushing_rx).await?;
+        let mut manager = SSTableManager::new(directory, 3, sstable_rx).await?;
         manager
             .create(vec![
                 InternalPair::new(b"rust", Some(b"wonderful")),

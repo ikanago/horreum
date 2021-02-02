@@ -13,7 +13,7 @@ use tokio::sync::oneshot;
 pub async fn serve(
     port: u16,
     memtable_tx: mpsc::Sender<Message>,
-    sstable_tx: crossbeam_channel::Sender<Message>,
+    sstable_tx: mpsc::Sender<Message>,
 ) -> Result<(), hyper::Error> {
     let addr = net::IpAddr::from([127, 0, 0, 1]);
     let addr = net::SocketAddr::new(addr, port);
@@ -41,13 +41,13 @@ pub async fn serve(
 #[derive(Clone)]
 pub(crate) struct Handler {
     memtable_tx: mpsc::Sender<Message>,
-    sstable_tx: crossbeam_channel::Sender<Message>,
+    sstable_tx: mpsc::Sender<Message>,
 }
 
 impl Handler {
     pub(crate) fn new(
         memtable_tx: mpsc::Sender<Message>,
-        sstable_tx: crossbeam_channel::Sender<Message>,
+        sstable_tx: mpsc::Sender<Message>,
     ) -> Self {
         Self {
             memtable_tx,
@@ -92,12 +92,10 @@ impl Handler {
         } else if let Command::Get { .. } = command {
             // If there is no entry for the key, search SSTables
             let (tx, rx) = oneshot::channel();
-            self.sstable_tx.send((command, tx)).unwrap();
-            info!("send command");
-            // std::thread::sleep(std::time::Duration::from_millis(1));
-            let res = rx.await.unwrap();
-            info!("reached");
-            res
+            if let Err(_) = self.sstable_tx.send((command, tx)).await {
+                warn!("The receiver dropped");
+            }
+            rx.await.unwrap()
         } else {
             None
         }

@@ -1,4 +1,5 @@
 use crate::error::Error;
+use crate::format::InternalPair;
 use hyper::Method;
 use qstring::QString;
 
@@ -8,6 +9,7 @@ pub enum Command {
     Get { key: Vec<u8> },
     Put { key: Vec<u8>, value: Vec<u8> },
     Delete { key: Vec<u8> },
+    Flush { pairs: Vec<InternalPair> },
 }
 
 impl Command {
