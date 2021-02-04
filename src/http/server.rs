@@ -6,6 +6,7 @@ use log::{debug, info, warn};
 use std::convert::Infallible;
 use std::net;
 use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 
 /// Start running server.
 /// Clone handler for each request and spawn job for it.
@@ -83,16 +84,18 @@ impl Handler {
 
     /// Communicate with the stores to apply a command
     pub(crate) async fn apply(&self, command: Command) -> Option<Vec<u8>> {
-        let (tx, mut rx) = mpsc::channel(1);
+        let (tx, rx) = oneshot::channel();
         self.memtable_tx.send((command.clone(), tx)).await.unwrap();
-        let entry = rx.recv().await.unwrap();
+        let entry = rx.await.unwrap();
         if entry.is_some() {
             entry
         } else if let Command::Get { .. } = command {
             // If there is no entry for the key, search SSTables
-            let (tx, mut rx) = mpsc::channel(1);
-            self.sstable_tx.send((command, tx)).await.unwrap();
-            rx.recv().await.unwrap()
+            let (tx, rx) = oneshot::channel();
+            if let Err(_) = self.sstable_tx.send((command, tx)).await {
+                warn!("The receiver dropped");
+            }
+            rx.await.unwrap()
         } else {
             None
         }

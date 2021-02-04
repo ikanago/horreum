@@ -12,12 +12,12 @@ pub use memtable::MemTable;
 pub use sstable::manager::SSTableManager;
 
 use command::Command;
-use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 
 /// Message sent to a store(`MemTable` or `SSTableManager`).
 /// This holds `mpsc::Sender` because the store have to send back response
 /// to sender of the `Message`.
-type Message = (Command, mpsc::Sender<Option<Vec<u8>>>);
+type Message = (Command, oneshot::Sender<Option<Vec<u8>>>);
 
 #[cfg(test)]
 mod tests {
@@ -25,15 +25,18 @@ mod tests {
     use crate::format::InternalPair;
     use crate::http::server::Handler;
     use std::io;
+    use tokio::sync::mpsc;
+
+    const MEMTABLE_SIZE: usize = 128;
 
     #[tokio::test]
     async fn put_and_get_integrated() -> io::Result<()> {
         let (memtable_tx, memtable_rx) = mpsc::channel(1);
-        let mut memtable = MemTable::new(memtable_rx);
+        let (sstable_tx, sstable_rx) = mpsc::channel(32);
+        let mut memtable = MemTable::new(MEMTABLE_SIZE, memtable_rx, sstable_tx.clone());
 
         let directory = "test_put_and_get";
         let _ = std::fs::create_dir(directory);
-        let (sstable_tx, sstable_rx) = mpsc::channel(1);
         let mut manager = SSTableManager::new(directory, 3, sstable_rx).await?;
         manager
             .create(vec![

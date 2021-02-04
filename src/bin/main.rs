@@ -8,8 +8,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (memtable_tx, memtable_rx) = mpsc::channel(32);
     let (sstable_tx, sstable_rx) = mpsc::channel(32);
-    let mut memtable = MemTable::new(memtable_rx);
     let config = Config::from_args();
+    dbg!(&config);
+    let mut memtable = MemTable::new(config.memtable_limit, memtable_rx, sstable_tx.clone());
     let mut manager =
         match SSTableManager::new(config.directory, config.block_stride, sstable_rx).await {
             Ok(m) => m,

@@ -3,6 +3,7 @@ use super::table::SSTable;
 use crate::command::Command;
 use crate::format::InternalPair;
 use crate::Message;
+use log::warn;
 use std::cmp::Reverse;
 use std::collections::VecDeque;
 use std::fs;
@@ -67,18 +68,41 @@ impl SSTableManager {
         Ok(())
     }
 
+    /// Listen to channel to receive instruction to get data or create a new table with flushed
+    /// data.
     pub async fn listen(&mut self) {
-        while let Some((command, tx)) = self.command_rx.recv().await {
-            if let Command::Get { key } = command {
-                let entry = self
-                    .get(&key)
-                    .await
-                    .unwrap()
-                    .map(|pair| pair.value)
-                    .flatten();
-                if let Err(_) = tx.send(entry).await {
-                    dbg!("The receiver dropped");
-                };
+        loop {
+            match self.command_rx.recv().await {
+                Some((command, tx)) => match command {
+                    Command::Get { key } => {
+                        let entry = self
+                            .get(&key)
+                            .await
+                            .unwrap()
+                            .map(|pair| pair.value)
+                            .flatten();
+                        if let Err(_) = tx.send(entry) {
+                            warn!("The receiver already dropped");
+                        }
+                    }
+                    // If `Command` does not include `Flush`
+                    // * when this loop waits for an instruction to get a content or flush with
+                    // async channel, contents in one of the two channel will never be received.
+                    // * with sync channel, `Handler::apply()` does not wait for sending back
+                    // result from here to receive it. This results in missing key-value pair which
+                    // actually exists.
+                    Command::Flush { pairs } => {
+                        if let Err(err) = self.create(pairs).await {
+                            warn!("{}", err);
+                        }
+                        // Just notify flush completion.
+                        if let Err(_) = tx.send(None) {
+                            warn!("The receiver already dropped");
+                        }
+                    }
+                    _ => (),
+                },
+                None => warn!("The channel disconnected"),
             }
         }
     }
@@ -182,8 +206,8 @@ mod tests {
         prepare_sstable_file("test_open_existing_files/table_1", &data1)?;
         prepare_sstable_file("test_open_existing_files/table_2", &data2)?;
 
-        let (_, rx) = mpsc::channel(1);
-        let mut manager = SSTableManager::new(path, 3, rx).await?;
+        let (_, crx) = mpsc::channel(4);
+        let mut manager = SSTableManager::new(path, 2, crx).await?;
         assert_eq!(
             InternalPair::new(b"abc00", Some(b"xyz")),
             manager.get(b"abc00").await?.unwrap()
@@ -203,8 +227,8 @@ mod tests {
     async fn get_pairs() -> io::Result<()> {
         let path = "test_get_create";
         let _ = std::fs::create_dir(path);
-        let (_, rx) = mpsc::channel(1);
-        let mut manager = SSTableManager::new(path, 2, rx).await?;
+        let (_, crx) = mpsc::channel(4);
+        let mut manager = SSTableManager::new(path, 2, crx).await?;
         manager
             .create(vec![
                 InternalPair::new(b"abc00", Some(b"def")),
