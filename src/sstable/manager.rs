@@ -68,6 +68,8 @@ impl SSTableManager {
         Ok(())
     }
 
+    /// Listen to channel to receive instruction to get data or create a new table with flushed
+    /// data.
     pub async fn listen(&mut self) {
         loop {
             match self.command_rx.recv().await {
@@ -83,6 +85,12 @@ impl SSTableManager {
                             warn!("The receiver already dropped");
                         }
                     }
+                    // If `Command` does not include `Flush`
+                    // * when this loop waits for an instruction to get a content or flush with
+                    // async channel, contents in one of the two channel will never be received.
+                    // * with sync channel, `Handler::apply()` does not wait for sending back
+                    // result from here to receive it. This results in missing key-value pair which
+                    // actually exists.
                     Command::Flush { pairs } => {
                         if let Err(err) = self.create(pairs).await {
                             warn!("{}", err);

@@ -74,12 +74,22 @@ impl MemTable {
     /// Create a new key-value entry.
     pub async fn put(&self, key: Vec<u8>, value: Vec<u8>) -> Option<Vec<u8>> {
         let mut map = self.inner.write().await;
-        let entry_size = key.len() + value.len();
-        let result = map.insert(key, Some(value)).flatten();
-        if result.is_none() {
-            // MemTable size is updated only if a new pair is inserted.
-            self.actual_size.fetch_add(entry_size, Ordering::Release);
-        }
+
+        let new_key_len = key.len();
+        let new_value_len = value.len();
+        let prev_value = map.insert(key, Some(value));
+        match prev_value.as_ref() {
+            // There already exists key-value pair.
+            // Add diff between new and old value length.
+            Some(Some(value)) => self
+                .actual_size
+                .fetch_add(new_value_len - value.len(), Ordering::Release),
+            // There exists deleted key-value pair.
+            // Just add value length.
+            Some(None) => self.actual_size.fetch_add(new_value_len, Ordering::Release),
+            // New key-value pair.
+            None => self.actual_size.fetch_add(new_key_len + new_value_len, Ordering::Release),
+        };
         // Drop lock here to acquire lock in `flush()` which may be called after.
         drop(map);
 
@@ -88,17 +98,22 @@ impl MemTable {
             self.flush().await;
             self.actual_size.store(0, Ordering::Release);
         }
-        result
+        prev_value.flatten()
     }
 
     /// Mark value corresponding to a key as deleted.
     /// Return `true` if there was an entry to delete.
     pub async fn delete(&self, key: &[u8]) -> Option<Vec<u8>> {
         let mut map = self.inner.write().await;
+
         // Check entry for the key to avoid mark a key which is not registered as `Deleted`.
-        let result = map.insert(key.to_vec(), None).flatten();
-        self.actual_size.fetch_sub(1, Ordering::Acquire);
-        result
+        let prev_value = map.insert(key.to_vec(), None).flatten();
+        if let Some(prev_value) = prev_value.as_ref() {
+            self.actual_size
+                .fetch_sub(prev_value.len(), Ordering::Acquire);
+        }
+        debug!("{}", self.actual_size.load(Ordering::Acquire));
+        prev_value
     }
 
     /// Read whole data in `MemTable` and send to `SSTableManager`.

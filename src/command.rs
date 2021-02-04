@@ -9,6 +9,8 @@ pub enum Command {
     Get { key: Vec<u8> },
     Put { key: Vec<u8>, value: Vec<u8> },
     Delete { key: Vec<u8> },
+    // `Command` includes `Flush` though this is not created from request.
+    // Detailed description is available at `sstable::SSTableManager::listen()`.
     Flush { pairs: Vec<InternalPair> },
 }
 
