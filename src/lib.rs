@@ -37,12 +37,15 @@ mod tests {
 
         let directory = "test_put_and_get";
         let _ = std::fs::create_dir(directory);
-        let mut manager = SSTableManager::new(directory, 3, sstable_rx).await?;
+        let mut manager = SSTableManager::new(directory, 3, 1000, sstable_rx).await?;
         manager
-            .create(vec![
-                InternalPair::new(b"rust", Some(b"wonderful")),
-                InternalPair::new(b"xxx", Some(b"sstable")),
-            ])
+            .create(
+                vec![
+                    InternalPair::new(b"rust", Some(b"wonderful")),
+                    InternalPair::new(b"xxx", Some(b"sstable")),
+                ],
+                23,
+            )
             .await?;
 
         tokio::spawn(async move { memtable.listen().await });

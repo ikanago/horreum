@@ -36,6 +36,13 @@ pub struct Config {
     )]
     pub directory: PathBuf,
 
+    #[structopt(
+        short = "r",
+        long = "compaction_ratio",
+        help = "Compaction trigger ratio in percentage"
+    )]
+    pub compaction_trigger_ratio: u64,
+
     /// Every `block_stride` pair, `SSTable` creates an index entry.
     #[structopt(
         short = "s",

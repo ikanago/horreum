@@ -6,25 +6,35 @@ use qstring::QString;
 /// Represents actions to key-value store and holds necessary data.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Command {
-    Get { key: Vec<u8> },
-    Put { key: Vec<u8>, value: Vec<u8> },
-    Delete { key: Vec<u8> },
+    Get {
+        key: Vec<u8>,
+    },
+    Put {
+        key: Vec<u8>,
+        value: Vec<u8>,
+    },
+    Delete {
+        key: Vec<u8>,
+    },
     // `Command` includes `Flush` though this is not created from request.
     // Detailed description is available at `sstable::SSTableManager::listen()`.
-    Flush { pairs: Vec<InternalPair> },
+    Flush {
+        pairs: Vec<InternalPair>,
+        size: usize,
+    },
 }
 
 impl Command {
     pub fn new(method: &Method, query: Option<&str>) -> Result<Command, Error> {
-        match method {
-            &Method::GET => Ok(Command::Get {
+        match *method {
+            Method::GET => Ok(Command::Get {
                 key: get_key(query)?,
             }),
-            &Method::PUT => {
+            Method::PUT => {
                 let (key, value) = get_key_value(query)?;
                 Ok(Command::Put { key, value })
             }
-            &Method::DELETE => Ok(Command::Delete {
+            Method::DELETE => Ok(Command::Delete {
                 key: get_key(query)?,
             }),
             _ => Err(Error::InvalidMethod),
