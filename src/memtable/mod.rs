@@ -1,7 +1,7 @@
 use crate::command::Command;
 use crate::format::InternalPair;
 use crate::Message;
-use log::{info, debug, warn};
+use log::{debug, info, warn};
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::{mpsc, oneshot, RwLock};

@@ -74,8 +74,14 @@ impl SSTable {
         self.file.read_all().await
     }
 
+    /// Get the size of data in this SSTable.
     pub(crate) fn get_size(&self) -> usize {
         self.size
+    }
+
+    /// Delete the SSTable file.
+    pub async fn delete(&mut self) -> io::Result<()> {
+        self.file.delete().await
     }
 }
 

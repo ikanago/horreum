@@ -143,18 +143,18 @@ impl SSTableManager {
         };
         info!("Compactions has started");
 
-        let tables = mem::replace(&mut self.tables, VecDeque::new());
+        let mut tables = mem::replace(&mut self.tables, VecDeque::new());
         let mut table_iterators = Vec::new();
-        for mut table in tables {
+        for table in tables.iter_mut() {
             let pairs = table.get_all().await?;
             table_iterators.push(pairs.into_iter());
         }
         let pairs = Self::compact_inner(table_iterators);
 
-        let table_path = self.new_table_path();
-        let file = PersistedFile::new(table_path, &pairs).await?;
-        let merged_table = SSTable::new(file, pairs, compacted_size, self.block_stride)?;
-        self.tables.push_front(merged_table);
+        for table in tables.iter_mut() {
+            table.delete().await?;
+        }
+        self.create(pairs, compacted_size).await?;
         Ok(())
     }
 

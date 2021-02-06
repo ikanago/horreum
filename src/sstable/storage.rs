@@ -1,7 +1,7 @@
 use crate::format::InternalPair;
 use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
-use tokio::fs::{File, OpenOptions};
+use tokio::fs::{self, File, OpenOptions};
 use tokio::io::{self, AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
 /// Represents manipulating an SSTable file.
@@ -10,30 +10,36 @@ use tokio::io::{self, AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 pub struct PersistedFile {
     /// SSTable file.
     file: File,
+
+    /// SSTable file name.
+    /// This is because file name cannot be extracted `std::tokio::fs::File`.
+    file_name: PathBuf,
 }
 
 impl PersistedFile {
     /// Serialize and write array of `InternalePair` and return a new `PersistedFile` instance.
     pub async fn new<P: AsRef<Path>>(path: P, pairs: &[InternalPair]) -> io::Result<Self> {
+        let mut path_buf = PathBuf::new();
+        path_buf.push(path);
         let mut file = OpenOptions::new()
             .create(true)
             .write(true)
             .read(true)
-            .open(path)
+            .open(&path_buf)
             .await?;
 
         let data = InternalPair::serialize_flatten(&pairs);
         file.write_all(&data).await?;
         file.seek(SeekFrom::Start(0)).await?;
-        Ok(Self { file })
+        Ok(Self { file, file_name: path_buf, })
     }
 
     /// Create an instance based on an existing file.
     pub async fn open<P: AsRef<Path>>(path: P) -> io::Result<Self> {
         let mut path_buf = PathBuf::new();
         path_buf.push(path);
-        let file = File::open(&path_buf.as_path()).await?;
-        Ok(Self { file })
+        let file = File::open(path_buf.as_path()).await?;
+        Ok(Self { file, file_name: path_buf, })
     }
 
     /// Read file contents at `position` by `length`.
@@ -52,6 +58,10 @@ impl PersistedFile {
         Ok(InternalPair::deserialize_from_bytes(&mut buffer)
             .await
             .unwrap())
+    }
+
+    pub async fn delete(&mut self) -> io::Result<()> {
+        fs::remove_file(self.file_name.as_path()).await
     }
 }
 
