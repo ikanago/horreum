@@ -25,8 +25,8 @@ pub struct SSTableManager {
     block_stride: usize,
 
     /// Array of SSTables this struct manages.
-    /// Front element is the newer.
-    tables: VecDeque<SSTable>,
+    /// Descending order by thier age (back elements is the newer).
+    tables: Vec<SSTable>,
 
     compaction_trigger_ratio: f64,
 
@@ -49,10 +49,10 @@ impl SSTableManager {
             .into_iter()
             .filter_map(|path| path.ok())
             .collect();
-        paths.sort_by_key(|path| Reverse(path.path()));
-        let mut tables = VecDeque::new();
+        paths.sort_by_key(|path| path.path());
+        let mut tables = Vec::new();
         for path in paths {
-            tables.push_back(SSTable::open(path.path(), block_stride).await?)
+            tables.push(SSTable::open(path.path(), block_stride).await?)
         }
         let compaction_trigger_rate = compaction_trigger_ratio as f64 / 100.0;
         Ok(Self {
@@ -69,7 +69,7 @@ impl SSTableManager {
         let table_path = self.new_table_path();
         let file = PersistedFile::new(table_path, &pairs).await?;
         let table = SSTable::new(file, pairs, size, self.block_stride).unwrap();
-        self.tables.push_front(table);
+        self.tables.push(table);
         Ok(())
     }
 
@@ -124,7 +124,7 @@ impl SSTableManager {
 
     /// Get a pair by given key from SSTables.
     pub async fn get(&mut self, key: &[u8]) -> io::Result<Option<InternalPair>> {
-        for table in self.tables.iter_mut() {
+        for table in self.tables.iter_mut().rev() {
             let pair = table.get(key).await?;
             if pair.is_some() {
                 return Ok(pair);
@@ -143,9 +143,9 @@ impl SSTableManager {
         };
         info!("Compactions has started");
 
-        let mut tables = mem::replace(&mut self.tables, VecDeque::new());
+        let mut tables = mem::replace(&mut self.tables, Vec::new());
         let mut table_iterators = Vec::new();
-        for table in tables.iter_mut() {
+        for table in tables.iter_mut().rev() {
             let pairs = table.get_all().await?;
             table_iterators.push(pairs.into_iter());
         }
@@ -168,7 +168,7 @@ impl SSTableManager {
     /// be acted.
     /// This functions returns a size of compacted SSTable.
     fn should_compact(&self) -> Option<usize> {
-        let oldest_table_size = match self.tables.back() {
+        let oldest_table_size = match self.tables.first() {
             Some(table) => table.get_size(),
             None => {
                 return None;
@@ -327,7 +327,7 @@ mod tests {
     #[test]
     fn compaction() {
         let tables = vec![
-            // Higher priority for reference
+            // Older, lower priority for reference
             vec![
                 InternalPair::new(b"abc02", Some(b"def")),
                 InternalPair::new(b"abc04", Some(b"hoge")),
@@ -337,7 +337,7 @@ mod tests {
                 InternalPair::new(b"abc00", Some(b"xyz")),
                 InternalPair::new(b"abc01", None),
             ],
-            // lower priority for reference
+            // Newer, higher priority for reference
             vec![
                 InternalPair::new(b"abc00", Some(b"def")),
                 InternalPair::new(b"abc01", Some(b"defg")),
