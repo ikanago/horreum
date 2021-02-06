@@ -4,8 +4,6 @@ use crate::command::Command;
 use crate::format::InternalPair;
 use crate::Message;
 use log::{debug, info, warn};
-use std::cmp::Reverse;
-use std::collections::VecDeque;
 use std::fs;
 use std::io;
 use std::mem;
@@ -28,6 +26,7 @@ pub struct SSTableManager {
     /// Descending order by thier age (back elements is the newer).
     tables: Vec<SSTable>,
 
+    /// Threshold to determine compaction should be acted.
     compaction_trigger_ratio: f64,
 
     /// Receiver to receive command.
@@ -51,10 +50,11 @@ impl SSTableManager {
             .collect();
         paths.sort_by_key(|path| path.path());
         let mut tables = Vec::new();
-        for path in paths {
+        for path in paths.iter() {
             tables.push(SSTable::open(path.path(), block_stride).await?)
         }
         let compaction_trigger_rate = compaction_trigger_ratio as f64 / 100.0;
+
         Ok(Self {
             table_directory,
             block_stride,
@@ -71,6 +71,13 @@ impl SSTableManager {
         let table = SSTable::new(file, pairs, size, self.block_stride).unwrap();
         self.tables.push(table);
         Ok(())
+    }
+
+    /// Generate a path name for a new SSTable.
+    fn new_table_path(&self) -> PathBuf {
+        let mut table_path = self.table_directory.clone();
+        table_path.push(format!("table_{}", self.tables.len()));
+        table_path
     }
 
     /// Listen to channel to receive instruction to get data or create a new table with flushed
@@ -113,13 +120,6 @@ impl SSTableManager {
                 None => warn!("The channel disconnected"),
             }
         }
-    }
-
-    /// Generate a path name for a new SSTable.
-    fn new_table_path(&self) -> PathBuf {
-        let mut table_path = self.table_directory.clone();
-        table_path.push(format!("table_{}", self.tables.len()));
-        table_path
     }
 
     /// Get a pair by given key from SSTables.

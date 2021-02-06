@@ -31,7 +31,10 @@ impl PersistedFile {
         let data = InternalPair::serialize_flatten(&pairs);
         file.write_all(&data).await?;
         file.seek(SeekFrom::Start(0)).await?;
-        Ok(Self { file, file_name: path_buf, })
+        Ok(Self {
+            file,
+            file_name: path_buf,
+        })
     }
 
     /// Create an instance based on an existing file.
@@ -39,7 +42,10 @@ impl PersistedFile {
         let mut path_buf = PathBuf::new();
         path_buf.push(path);
         let file = File::open(path_buf.as_path()).await?;
-        Ok(Self { file, file_name: path_buf, })
+        Ok(Self {
+            file,
+            file_name: path_buf,
+        })
     }
 
     /// Read file contents at `position` by `length`.
