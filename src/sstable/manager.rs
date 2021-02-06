@@ -93,7 +93,7 @@ impl SSTableManager {
                             .unwrap()
                             .map(|pair| pair.value)
                             .flatten();
-                        if let Err(_) = tx.send(entry) {
+                        if tx.send(entry).is_err() {
                             warn!("The receiver already dropped");
                         }
                     }
@@ -111,7 +111,7 @@ impl SSTableManager {
                             warn!("{}", err);
                         }
                         // Just notify flush completion.
-                        if let Err(_) = tx.send(None) {
+                        if tx.send(None).is_err() {
                             warn!("The receiver already dropped");
                         }
                     }

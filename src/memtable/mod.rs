@@ -134,7 +134,7 @@ impl MemTable {
             .collect();
 
         let (tx, rx) = oneshot::channel();
-        if let Err(_) = self
+        if self
             .flushing_tx
             .send((
                 Command::Flush {
@@ -144,11 +144,12 @@ impl MemTable {
                 tx,
             ))
             .await
+            .is_err()
         {
             warn!("The receiver dropped");
         }
         // Wait for finishing flush
-        if let Err(_) = rx.await {
+        if rx.await.is_err() {
             warn!("The sender dropped");
         }
 

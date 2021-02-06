@@ -75,7 +75,7 @@ impl Handler {
         let response = self
             .apply(command)
             .await
-            .unwrap_or(b"Entry Not Found".to_vec());
+            .unwrap_or_else(|| b"Entry Not Found".to_vec());
         Ok(Response::builder()
             .status(StatusCode::OK)
             .body(Body::from(response))
@@ -92,7 +92,7 @@ impl Handler {
         } else if let Command::Get { .. } = command {
             // If there is no entry for the key, search SSTables
             let (tx, rx) = oneshot::channel();
-            if let Err(_) = self.sstable_tx.send((command, tx)).await {
+            if self.sstable_tx.send((command, tx)).await.is_err() {
                 warn!("The receiver dropped");
             }
             rx.await.unwrap()
