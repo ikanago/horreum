@@ -10,6 +10,9 @@ pub struct SSTable {
     /// API to access an SSTable file.
     pub(crate) file: PersistedFile,
 
+    /// SSTable contents size in bytes
+    size: usize,
+
     /// Stores pairs of key and position to start read the key from the file.
     pub(crate) index: Index,
 }
@@ -19,19 +22,30 @@ impl SSTable {
     pub fn new(
         file: PersistedFile,
         pairs: Vec<InternalPair>,
+        size: usize,
         block_stride: usize,
     ) -> io::Result<Self> {
         let index = Index::new(pairs, block_stride);
-        Ok(Self { file, index })
+        Ok(Self { file, size, index })
     }
 
     /// Open existing file and load key-value pairs in it.
     pub async fn open<P: AsRef<Path>>(path: P, block_stride: usize) -> io::Result<Self> {
         let mut file = PersistedFile::open(path).await?;
         let pairs = file.read_all().await?;
+        let size = pairs
+            .iter()
+            .map(|pair| {
+                pair.key.len()
+                    + match pair.value.as_ref() {
+                        Some(value) => value.len(),
+                        None => 0,
+                    }
+            })
+            .sum();
         let index = Index::new(pairs, block_stride);
 
-        Ok(Self { file, index })
+        Ok(Self { file, size, index })
     }
 
     /// Get key-value pair from SSTable file.
@@ -59,6 +73,10 @@ impl SSTable {
     pub async fn get_all(&mut self) -> io::Result<Vec<InternalPair>> {
         self.file.read_all().await
     }
+
+    pub(crate) fn get_size(&self) -> usize {
+        self.size
+    }
 }
 
 #[cfg(test)]
@@ -75,7 +93,7 @@ mod tests {
             InternalPair::new("日本語💖".as_bytes(), Some("ржавчина".as_bytes())),
         ];
         let file = PersistedFile::new(path, &pairs).await?;
-        let _table = SSTable::new(file, pairs.clone(), 1)?;
+        let _table = SSTable::new(file, pairs.clone(), 39, 1)?;
         assert_eq!(
             InternalPair::serialize_flatten(&pairs),
             read_file_to_buffer(path)
@@ -105,7 +123,7 @@ mod tests {
             InternalPair::new(b"abc15", None),
         ];
         let file = PersistedFile::new(path, &pairs).await?;
-        let mut table = SSTable::new(file, pairs, 3)?;
+        let mut table = SSTable::new(file, pairs, 113, 3)?;
         assert_eq!(
             Some(InternalPair::new(b"abc04", Some(b"defg"))),
             table.get(b"abc04").await?
@@ -128,7 +146,7 @@ mod tests {
             InternalPair::new(b"abc02", None),
         ];
         let file = PersistedFile::new(path, &pairs).await?;
-        let mut table = SSTable::new(file, pairs, 3)?;
+        let mut table = SSTable::new(file, pairs, 22, 3)?;
         let mut pairs = table.get_all().await?.into_iter();
         assert_eq!(
             Some(InternalPair::new(b"abc00", Some(b"def"))),

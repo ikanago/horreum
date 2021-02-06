@@ -3,7 +3,7 @@ use super::table::SSTable;
 use crate::command::Command;
 use crate::format::InternalPair;
 use crate::Message;
-use log::warn;
+use log::{debug, info, warn};
 use std::cmp::Reverse;
 use std::collections::VecDeque;
 use std::fs;
@@ -28,6 +28,8 @@ pub struct SSTableManager {
     /// Front element is the newer.
     tables: VecDeque<SSTable>,
 
+    compaction_trigger_ratio: f64,
+
     /// Receiver to receive command.
     command_rx: mpsc::Receiver<Message>,
 }
@@ -37,6 +39,7 @@ impl SSTableManager {
     pub async fn new<P: AsRef<Path>>(
         directory: P,
         block_stride: usize,
+        compaction_trigger_ratio: u64,
         command_rx: mpsc::Receiver<Message>,
     ) -> io::Result<Self> {
         let mut table_directory = PathBuf::new();
@@ -51,19 +54,21 @@ impl SSTableManager {
         for path in paths {
             tables.push_back(SSTable::open(path.path(), block_stride).await?)
         }
+        let compaction_trigger_rate = compaction_trigger_ratio as f64 / 100.0;
         Ok(Self {
             table_directory,
             block_stride,
             tables,
+            compaction_trigger_ratio: compaction_trigger_rate,
             command_rx,
         })
     }
 
     /// Create a new SSTable with given pairs.
-    pub async fn create(&mut self, pairs: Vec<InternalPair>) -> io::Result<()> {
+    pub async fn create(&mut self, pairs: Vec<InternalPair>, size: usize) -> io::Result<()> {
         let table_path = self.new_table_path();
         let file = PersistedFile::new(table_path, &pairs).await?;
-        let table = SSTable::new(file, pairs, self.block_stride).unwrap();
+        let table = SSTable::new(file, pairs, size, self.block_stride).unwrap();
         self.tables.push_front(table);
         Ok(())
     }
@@ -91,8 +96,11 @@ impl SSTableManager {
                     // * with sync channel, `Handler::apply()` does not wait for sending back
                     // result from here to receive it. This results in missing key-value pair which
                     // actually exists.
-                    Command::Flush { pairs } => {
-                        if let Err(err) = self.create(pairs).await {
+                    Command::Flush { pairs, size } => {
+                        if let Err(err) = self.create(pairs, size).await {
+                            warn!("{}", err);
+                        }
+                        if let Err(err) = self.compact().await {
                             warn!("{}", err);
                         }
                         // Just notify flush completion.
@@ -125,8 +133,16 @@ impl SSTableManager {
         Ok(None)
     }
 
-    /// Compact current all SSTables into a new one.
-    pub async fn compact(&mut self) -> io::Result<()> {
+    /// Compact current all SSTables into a new one if a criteria is met.
+    async fn compact(&mut self) -> io::Result<()> {
+        let compacted_size = match self.should_compact() {
+            Some(size) => size,
+            None => {
+                return Ok(());
+            }
+        };
+        info!("Compactions has started");
+
         let tables = mem::replace(&mut self.tables, VecDeque::new());
         let mut table_iterators = Vec::new();
         for mut table in tables {
@@ -137,9 +153,44 @@ impl SSTableManager {
 
         let table_path = self.new_table_path();
         let file = PersistedFile::new(table_path, &pairs).await?;
-        let merged_table = SSTable::new(file, pairs, self.block_stride)?;
+        let merged_table = SSTable::new(file, pairs, compacted_size, self.block_stride)?;
         self.tables.push_front(merged_table);
         Ok(())
+    }
+
+    /// Determine compaction should be done.
+    /// Implemented using following URL as a reference:
+    /// https://github.com/facebook/rocksdb/wiki/Universal-Compaction#1-compaction-triggered-by-space-amplification
+    /// Criteria:
+    /// Let T1, T2, ..., Tn be SSTables where T1 is the newest one.
+    /// Define `amplification_ratio` as (T1 + T2 + ... + Tn-1) / Tn.
+    /// If `amplification_ratio` is greater than `self.compaction_trigger_rate`, compaction should
+    /// be acted.
+    /// This functions returns a size of compacted SSTable.
+    fn should_compact(&self) -> Option<usize> {
+        let oldest_table_size = match self.tables.back() {
+            Some(table) => table.get_size(),
+            None => {
+                return None;
+            }
+        };
+        let tables_total_size = self
+            .tables
+            .iter()
+            .map(|table| table.get_size())
+            .sum::<usize>();
+        let newer_tables_total_size = tables_total_size - oldest_table_size;
+        let amplification_ratio = newer_tables_total_size as f64 / oldest_table_size as f64;
+
+        debug!(
+            "amplification_ratio: {}, compaction_trigger_ratio: {}",
+            amplification_ratio, self.compaction_trigger_ratio
+        );
+        if amplification_ratio > self.compaction_trigger_ratio {
+            Some(tables_total_size)
+        } else {
+            None
+        }
     }
 
     /// Read SSTable elements one by one for each SSTable and hold them as `merge_candidate`.
@@ -207,7 +258,7 @@ mod tests {
         prepare_sstable_file("test_open_existing_files/table_2", &data2)?;
 
         let (_, crx) = mpsc::channel(4);
-        let mut manager = SSTableManager::new(path, 2, crx).await?;
+        let mut manager = SSTableManager::new(path, 2, 1000, crx).await?;
         assert_eq!(
             InternalPair::new(b"abc00", Some(b"xyz")),
             manager.get(b"abc00").await?.unwrap()
@@ -228,24 +279,30 @@ mod tests {
         let path = "test_get_create";
         let _ = std::fs::create_dir(path);
         let (_, crx) = mpsc::channel(4);
-        let mut manager = SSTableManager::new(path, 2, crx).await?;
+        let mut manager = SSTableManager::new(path, 2, 1000, crx).await?;
         manager
-            .create(vec![
-                InternalPair::new(b"abc00", Some(b"def")),
-                InternalPair::new(b"abc01", Some(b"defg")),
-            ])
+            .create(
+                vec![
+                    InternalPair::new(b"abc00", Some(b"def")),
+                    InternalPair::new(b"abc01", Some(b"defg")),
+                ],
+                17,
+            )
             .await?;
         manager
-            .create(vec![
-                InternalPair::new(b"abc00", Some(b"xyz")),
-                InternalPair::new(b"abc01", None),
-            ])
+            .create(
+                vec![
+                    InternalPair::new(b"abc00", Some(b"xyz")),
+                    InternalPair::new(b"abc01", None),
+                ],
+                13,
+            )
             .await?;
         manager
-            .create(vec![InternalPair::new(b"abc02", Some(b"def"))])
+            .create(vec![InternalPair::new(b"abc02", Some(b"def"))], 8)
             .await?;
         manager
-            .create(vec![InternalPair::new(b"xxx", Some(b"42"))])
+            .create(vec![InternalPair::new(b"xxx", Some(b"42"))], 5)
             .await?;
 
         assert_eq!(
@@ -298,5 +355,42 @@ mod tests {
         ];
         let table_iterators = tables.into_iter().map(|table| table.into_iter()).collect();
         assert_eq!(expected, SSTableManager::compact_inner(table_iterators));
+    }
+
+    #[tokio::test]
+    async fn should_act_compact() -> io::Result<()> {
+        let path = "test_should_act_compact";
+        let _ = std::fs::create_dir(path);
+        let (_, crx) = mpsc::channel(4);
+        let mut manager = SSTableManager::new(path, 2, 25, crx).await?;
+        manager
+            .create(vec![InternalPair::new(b"0123", None)], 4)
+            .await?;
+        manager
+            .create(vec![InternalPair::new(b"0", None)], 1)
+            .await?;
+        manager
+            .create(vec![InternalPair::new(b"0", None)], 1)
+            .await?;
+        // 1 1 4 => 6
+        assert_eq!(Some(6), manager.should_compact());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn should_not_act_compact() -> io::Result<()> {
+        let path = "test_should_not_act_compact";
+        let _ = std::fs::create_dir(path);
+        let (_, crx) = mpsc::channel(4);
+        let mut manager = SSTableManager::new(path, 2, 25, crx).await?;
+        manager
+            .create(vec![InternalPair::new(b"012345", None)], 6)
+            .await?;
+        manager
+            .create(vec![InternalPair::new(b"0", None)], 1)
+            .await?;
+        // 1 6 => 1 6 (compaction not triggered)
+        assert_eq!(None, manager.should_compact());
+        Ok(())
     }
 }

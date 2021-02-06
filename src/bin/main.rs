@@ -11,14 +11,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::from_args();
     dbg!(&config);
     let mut memtable = MemTable::new(config.memtable_limit, memtable_rx, sstable_tx.clone());
-    let mut manager =
-        match SSTableManager::new(config.directory, config.block_stride, sstable_rx).await {
-            Ok(m) => m,
-            Err(err) => {
-                eprintln!("{}", err);
-                std::process::exit(1);
-            }
-        };
+    let mut manager = match SSTableManager::new(
+        config.directory,
+        config.block_stride,
+        config.compaction_trigger_ratio,
+        sstable_rx,
+    )
+    .await
+    {
+        Ok(m) => m,
+        Err(err) => {
+            eprintln!("{}", err);
+            std::process::exit(1);
+        }
+    };
 
     tokio::spawn(async move { memtable.listen().await });
     tokio::spawn(async move { manager.listen().await });

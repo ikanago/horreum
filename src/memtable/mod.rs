@@ -1,7 +1,7 @@
 use crate::command::Command;
 use crate::format::InternalPair;
 use crate::Message;
-use log::{debug, warn};
+use log::{info, debug, warn};
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::{mpsc, oneshot, RwLock};
@@ -88,13 +88,16 @@ impl MemTable {
             // Just add value length.
             Some(None) => self.actual_size.fetch_add(new_value_len, Ordering::Release),
             // New key-value pair.
-            None => self.actual_size.fetch_add(new_key_len + new_value_len, Ordering::Release),
+            None => self
+                .actual_size
+                .fetch_add(new_key_len + new_value_len, Ordering::Release),
         };
         // Drop lock here to acquire lock in `flush()` which may be called after.
         drop(map);
 
         debug!("{}", self.actual_size.load(Ordering::Acquire));
         if self.actual_size.load(Ordering::Acquire) > self.size_limit {
+            info!("MemTable data flushing has started");
             self.flush().await;
             self.actual_size.store(0, Ordering::Release);
         }
@@ -131,7 +134,17 @@ impl MemTable {
             .collect();
 
         let (tx, rx) = oneshot::channel();
-        if let Err(_) = self.flushing_tx.send((Command::Flush { pairs }, tx)).await {
+        if let Err(_) = self
+            .flushing_tx
+            .send((
+                Command::Flush {
+                    pairs,
+                    size: self.actual_size.load(Ordering::SeqCst),
+                },
+                tx,
+            ))
+            .await
+        {
             warn!("The receiver dropped");
         }
         // Wait for finishing flush
