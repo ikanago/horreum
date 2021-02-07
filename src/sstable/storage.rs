@@ -2,7 +2,7 @@ use crate::format::InternalPair;
 use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
 use tokio::fs::{self, File, OpenOptions};
-use tokio::io::{self, AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
+use tokio::io::{self, AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
 
 /// Represents manipulating an SSTable file.
 /// Contents of the file will never be modified.
@@ -66,8 +66,24 @@ impl PersistedFile {
             .unwrap())
     }
 
+    pub fn into_reader(self) -> PersistedFileReader {
+        PersistedFileReader {
+            buffer: BufReader::new(self.file),
+        }
+    }
+
     pub async fn delete(&mut self) -> io::Result<()> {
         fs::remove_file(self.file_name.as_path()).await
+    }
+}
+
+pub struct PersistedFileReader {
+    buffer: BufReader<File>,
+}
+
+impl PersistedFileReader {
+    pub async fn read_next(&mut self) -> InternalPair {
+        InternalPair::deserialize(&mut self.buffer).await.unwrap()
     }
 }
 
@@ -103,6 +119,27 @@ mod tests {
         ];
         let mut file = PersistedFile::new("test_read_all", &pairs).await?;
         assert_eq!(pairs, file.read_all().await?);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn read_sequentially() -> io::Result<()> {
+        let pairs = vec![
+            InternalPair::new(b"abc00", Some(b"def")),
+            InternalPair::new(b"abc01", Some(b"xxx")),
+            InternalPair::new(b"abc02", None),
+        ];
+        let file = PersistedFile::new("test_read_sequentially", &pairs).await?;
+        let mut reader = file.into_reader();
+        assert_eq!(
+            InternalPair::new(b"abc00", Some(b"def")),
+            reader.read_next().await
+        );
+        assert_eq!(
+            InternalPair::new(b"abc01", Some(b"xxx")),
+            reader.read_next().await
+        );
+        assert_eq!(InternalPair::new(b"abc02", None), reader.read_next().await);
         Ok(())
     }
 }
