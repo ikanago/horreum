@@ -66,6 +66,7 @@ impl PersistedFile {
             .unwrap())
     }
 
+    /// Convert to `PersistedFileReader` to read data sequentially in compaction.
     pub fn into_reader(self) -> PersistedFileReader {
         PersistedFileReader {
             buffer: BufReader::new(self.file),
@@ -82,8 +83,8 @@ pub struct PersistedFileReader {
 }
 
 impl PersistedFileReader {
-    pub async fn read_next(&mut self) -> InternalPair {
-        InternalPair::deserialize(&mut self.buffer).await.unwrap()
+    pub async fn read_next(&mut self) -> Option<InternalPair> {
+        InternalPair::deserialize(&mut self.buffer).await.ok()
     }
 }
 
@@ -132,14 +133,18 @@ mod tests {
         let file = PersistedFile::new("test_read_sequentially", &pairs).await?;
         let mut reader = file.into_reader();
         assert_eq!(
-            InternalPair::new(b"abc00", Some(b"def")),
+            Some(InternalPair::new(b"abc00", Some(b"def"))),
             reader.read_next().await
         );
         assert_eq!(
-            InternalPair::new(b"abc01", Some(b"xxx")),
+            Some(InternalPair::new(b"abc01", Some(b"xxx"))),
             reader.read_next().await
         );
-        assert_eq!(InternalPair::new(b"abc02", None), reader.read_next().await);
+        assert_eq!(
+            Some(InternalPair::new(b"abc02", None)),
+            reader.read_next().await
+        );
+        assert_eq!(None, reader.read_next().await);
         Ok(())
     }
 }

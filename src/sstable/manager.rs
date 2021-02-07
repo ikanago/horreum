@@ -68,7 +68,7 @@ impl SSTableManager {
     pub async fn create(&mut self, pairs: Vec<InternalPair>, size: usize) -> io::Result<()> {
         let table_path = self.new_table_path();
         let file = PersistedFile::new(table_path, &pairs).await?;
-        let table = SSTable::new(file, pairs, size, self.block_stride).unwrap();
+        let table = SSTable::new(file, pairs, size, self.block_stride)?;
         self.tables.push(table);
         Ok(())
     }
@@ -242,7 +242,7 @@ mod tests {
     #[tokio::test]
     async fn open_existing_files() -> io::Result<()> {
         let path = "test_open_existing_files";
-        let _ = std::fs::create_dir(path);
+        std::fs::create_dir(path)?;
         let data0 = InternalPair::serialize_flatten(&vec![
             InternalPair::new(b"abc00", Some(b"def")),
             InternalPair::new(b"abc01", Some(b"defg")),
@@ -277,7 +277,7 @@ mod tests {
     #[tokio::test]
     async fn get_pairs() -> io::Result<()> {
         let path = "test_get_create";
-        let _ = std::fs::create_dir(path);
+        std::fs::create_dir(path)?;
         let (_, crx) = mpsc::channel(4);
         let mut manager = SSTableManager::new(path, 2, 1000, crx).await?;
         manager
@@ -324,37 +324,57 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn compaction() {
-        let tables = vec![
-            // Older, lower priority for reference
-            vec![
-                InternalPair::new(b"abc02", Some(b"def")),
-                InternalPair::new(b"abc04", Some(b"hoge")),
-                InternalPair::new(b"abc05", None),
-            ],
+    #[tokio::test]
+    async fn compaction() -> io::Result<()> {
+        let path = "test_compaction";
+        std::fs::create_dir(path)?;
+        let (_, crx) = mpsc::channel(4);
+        let mut manager = SSTableManager::new(path, 2, 50, crx).await?;
+        // Older, lower priority for reference
+        manager
+            .create(
+                vec![
+                    InternalPair::new(b"abc00", Some(b"def")),
+                    InternalPair::new(b"abc01", Some(b"dog")),
+                    InternalPair::new(b"abc02", None),
+                    InternalPair::new(b"abc03", Some(b"cat")),
+                ],
+                29,
+            )
+            .await?;
+        manager
+            .create(
+                vec![
+                    InternalPair::new(b"abc00", Some(b"xyz")),
+                    InternalPair::new(b"abc01", None),
+                ],
+                13,
+            )
+            .await?;
+        // Newer, higher priority for reference
+        manager
+            .create(
+                vec![
+                    InternalPair::new(b"abc02", Some(b"fuga")),
+                    InternalPair::new(b"abc04", Some(b"hoge")),
+                ],
+                18,
+            )
+            .await?;
+        manager.compact().await?;
+
+        let mut table = SSTable::open("test_compaction/table_0", 2).await?;
+        assert_eq!(
             vec![
                 InternalPair::new(b"abc00", Some(b"xyz")),
                 InternalPair::new(b"abc01", None),
+                InternalPair::new(b"abc02", Some(b"fuga")),
+                InternalPair::new(b"abc03", Some(b"cat")),
+                InternalPair::new(b"abc04", Some(b"hoge")),
             ],
-            // Newer, higher priority for reference
-            vec![
-                InternalPair::new(b"abc00", Some(b"def")),
-                InternalPair::new(b"abc01", Some(b"defg")),
-                InternalPair::new(b"abc02", Some(b"xyz")),
-                InternalPair::new(b"abc03", Some(b"defg")),
-            ],
-        ];
-        let expected = vec![
-            InternalPair::new(b"abc00", Some(b"xyz")),
-            InternalPair::new(b"abc01", None),
-            InternalPair::new(b"abc02", Some(b"def")),
-            InternalPair::new(b"abc03", Some(b"defg")),
-            InternalPair::new(b"abc04", Some(b"hoge")),
-            InternalPair::new(b"abc05", None),
-        ];
-        let table_iterators = tables.into_iter().map(|table| table.into_iter()).collect();
-        assert_eq!(expected, SSTableManager::compact_inner(table_iterators));
+            table.get_all().await?
+        );
+        Ok(())
     }
 
     #[tokio::test]

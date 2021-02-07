@@ -79,6 +79,10 @@ impl SSTable {
         self.size
     }
 
+    pub fn into_file(self) -> PersistedFile {
+        self.file
+    }
+
     /// Delete the SSTable file.
     pub async fn delete(&mut self) -> io::Result<()> {
         self.file.delete().await
