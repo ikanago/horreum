@@ -16,7 +16,7 @@ qstring = "0.7"
 serde = { version = "1.0", features = [ "derive" ] }
 structopt = "0.3.21"
 thiserror = "1.0.20"
-tokio = { version = "1.0.0", features = [ "full" ] }
+tokio = { version = "1.2.0", features = [ "full" ] }
 
 [dev-dependencies]
 criterion = "0.3.3"
