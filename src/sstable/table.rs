@@ -1,4 +1,5 @@
 use super::index::Index;
+use crate::PersistedContents;
 use super::storage::PersistedFile;
 use crate::format::InternalPair;
 use std::io;

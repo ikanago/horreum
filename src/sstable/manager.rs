@@ -238,6 +238,7 @@ impl SSTableManager {
 mod tests {
     use super::*;
     use crate::sstable::tests::*;
+    use crate::PersistedContents;
 
     #[tokio::test]
     async fn open_existing_files() -> io::Result<()> {

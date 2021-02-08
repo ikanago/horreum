@@ -3,6 +3,7 @@ use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
 use tokio::fs::{self, File, OpenOptions};
 use tokio::io::{self, AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader};
+use crate::PersistedContents;
 
 /// Represents manipulating an SSTable file.
 /// Contents of the file will never be modified.

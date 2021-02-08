@@ -1,3 +1,5 @@
+use crate::PersistedContents;
+use async_trait::async_trait;
 use bincode::{deserialize, serialize, Error};
 use std::io::Cursor;
 use tokio::io::{AsyncRead, AsyncReadExt};
@@ -19,45 +21,6 @@ impl InternalPair {
         }
     }
 
-    /// Serialize struct's members into `Vec<u8>`.
-    pub fn serialize(&self) -> Vec<u8> {
-        let mut key_length = serialize(&self.key.len()).unwrap();
-        let mut value_length = match &self.value {
-            Some(value) => serialize(&value.len()).unwrap(),
-            None => vec![0; 8],
-        };
-        let mut buffer = Vec::new();
-        buffer.append(&mut key_length);
-        buffer.append(&mut value_length);
-        buffer.append(&mut self.key.clone());
-        if let Some(value) = &self.value {
-            buffer.append(&mut value.clone());
-        }
-        buffer
-    }
-
-    /// Serialize each elements in `pairs` and flatten vector of bytes.
-    pub fn serialize_flatten(pairs: &[InternalPair]) -> Vec<u8> {
-        pairs.iter().flat_map(|pair| pair.serialize()).collect()
-    }
-
-    /// Deserialize `Vec<u8>` into struct's members.
-    pub async fn deserialize<R: AsyncRead + Unpin>(reader: &mut R) -> Result<Self, Error> {
-        InternalPair::deserialize_inner(reader).await
-    }
-
-    /// Deserialize bytes of pairs.
-    pub async fn deserialize_from_bytes(bytes: &mut [u8]) -> Result<Vec<Self>, Error> {
-        let mut pairs = vec![];
-        let bytes_length = bytes.len() as u64;
-        let mut cursor = Cursor::new(bytes);
-        while cursor.position() < bytes_length {
-            let pair = Self::deserialize_inner(&mut cursor).await?;
-            pairs.push(pair);
-        }
-        Ok(pairs)
-    }
-
     // Deserialize key and value from something implemented `Read`
     // and return `Self` and the number of bytes read from.
     async fn deserialize_inner<R: AsyncRead + Unpin>(reader: &mut R) -> Result<Self, Error> {
@@ -74,6 +37,48 @@ impl InternalPair {
             None
         };
         Ok(InternalPair { key, value })
+    }
+}
+
+#[async_trait]
+impl PersistedContents for InternalPair {
+    /// Serialize struct's members into `Vec<u8>`.
+    fn serialize(&self) -> Vec<u8> {
+        let mut key_length = serialize(&self.key.len()).unwrap();
+        let mut value_length = match &self.value {
+            Some(value) => serialize(&value.len()).unwrap(),
+            None => vec![0; 8],
+        };
+        let mut buffer = Vec::new();
+        buffer.append(&mut key_length);
+        buffer.append(&mut value_length);
+        buffer.append(&mut self.key.clone());
+        if let Some(value) = &self.value {
+            buffer.append(&mut value.clone());
+        }
+        buffer
+    }
+
+    /// Serialize each elements in `pairs` and flatten vector of bytes.
+    fn serialize_flatten(pairs: &[InternalPair]) -> Vec<u8> {
+        pairs.iter().flat_map(|pair| pair.serialize()).collect()
+    }
+
+    /// Deserialize `Vec<u8>` into struct's members.
+    async fn deserialize<R: AsyncRead + Unpin + Send>(reader: &mut R) -> Result<Self, Error> {
+        InternalPair::deserialize_inner(reader).await
+    }
+
+    /// Deserialize bytes of pairs.
+    async fn deserialize_from_bytes(bytes: &mut [u8]) -> Result<Vec<Self>, Error> {
+        let mut pairs = vec![];
+        let bytes_length = bytes.len() as u64;
+        let mut cursor = Cursor::new(bytes);
+        while cursor.position() < bytes_length {
+            let pair = Self::deserialize_inner(&mut cursor).await?;
+            pairs.push(pair);
+        }
+        Ok(pairs)
     }
 }
 

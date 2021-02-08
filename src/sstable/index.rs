@@ -1,7 +1,15 @@
 use crate::format::InternalPair;
+use crate::PersistedContents;
 
 /// Block is a group of keys.
 /// This has a first key of the block, position at a disk and length of the block.
+/// Persisted block structure:
+///
+/// ```text
+/// +----------+--------+------------+--------------+
+/// | position | length | key_length | key(var-len) |
+/// +----------+--------+------------+--------------+
+/// ```
 #[derive(Debug, Eq, PartialEq)]
 pub struct Block {
     /// First key of the block.
@@ -51,17 +59,17 @@ pub struct Index {
 
 impl Index {
     /// Create index for key-value pairs stored in a disk.  
-    /// Assume `pairs` is sorted.  
+    /// Assume `pairs` is sorted.
     pub fn new(pairs: Vec<InternalPair>, block_stride: usize) -> Self {
         let mut items = Vec::new();
-        let mut read_data = Vec::new();
+        let mut read_data_len = 0;
 
         for pair_chunk in pairs.chunks(block_stride) {
-            let mut block = Block::new(&pair_chunk[0].key, read_data.len(), 0);
-            let mut block_data = InternalPair::serialize_flatten(pair_chunk);
+            let mut block = Block::new(&pair_chunk[0].key, read_data_len, 0);
+            let block_data = InternalPair::serialize_flatten(pair_chunk);
             block.set_length(block_data.len());
             items.push(block);
-            read_data.append(&mut block_data);
+            read_data_len += block_data.len();
         }
         Self { items }
     }
